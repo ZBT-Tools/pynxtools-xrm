@@ -1,0 +1,5 @@
+prune *
+exclude *
+recursive-include src/pynxtools_xrm *.py
+include pyproject.toml README.md
+graft src/pynxtools_xrm/nomad/example_uploads
