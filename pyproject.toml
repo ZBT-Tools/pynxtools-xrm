@@ -32,6 +32,7 @@ pynx-xrm = "pynxtools_xrm.cli:main"
 [project.optional-dependencies]
 dev = [
     "mypy",
+    "packaging",
     "ruff>=0.15.0",
     "pytest",
     "pytest-cov",

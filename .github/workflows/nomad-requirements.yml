@@ -27,11 +27,11 @@ jobs:
       run: |
         git clone --depth 1 --branch develop --recurse-submodules https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR.git nomad
         git submodule update --init --recursive --depth 1
-    - name: Add pynxtools-xrm dependency in NOMAD test_plugins.txt
+    - name: Add checked-out pynxtools-xrm to NOMAD test_plugins.txt
       working-directory: ./nomad
       run: |
         echo "" >> test_plugins.txt
-        echo "pynxtools-xrm@git+https://github.com/FAIRmat-NFDI/pynxtools-xrm.git@${{ github.head_ref || github.ref_name }}" >> test_plugins.txt
+        echo "pynxtools-xrm @ file://$(realpath ..)" >> test_plugins.txt
     - name: Install uv and set the python version to ${{ env.python-version }}
       uses: astral-sh/setup-uv@v5
       with:
@@ -42,7 +42,7 @@ jobs:
         uv pip compile --universal -p ${{ env.python-version }} --annotation-style=line --extra=infrastructure --output-file=requirements.txt pyproject.toml
         uv pip compile --universal -p ${{ env.python-version }} --annotation-style=line --extra=dev --extra=infrastructure --output-file=requirements-dev.txt requirements.txt pyproject.toml
         uv pip compile --universal -p ${{ env.python-version }} --annotation-style=line --output-file=requirements-plugins.txt --unsafe-package nomad-lab -c requirements-dev.txt test_plugins.txt
-    - name: Install NOMAD dependencies with pynxtools from current branch
+    - name: Install NOMAD dependencies with pynxtools-xrm from current checkout
       working-directory: ./nomad
       run: |
         uv pip install -r requirements-plugins.txt -c requirements-dev.txt --prerelease=allow

@@ -16,7 +16,7 @@
 # limitations under the License.
 #
 
-import re
+from packaging.version import Version
 
 from pynxtools_xrm import get_pynxtools_xrm_version
 
@@ -24,16 +24,4 @@ from pynxtools_xrm import get_pynxtools_xrm_version
 def test_get_pynxtools_xrm_version():
     version = get_pynxtools_xrm_version()
     assert version != "unknown_version"
-    assert re.compile(
-        r"""
-        ^
-        (?P<major>\d+)\.
-        (?P<minor>\d+)\.
-        (?P<patch>\d+)
-        (?:\.post(?P<post>\d+))?
-        (?:\.dev(?P<dev>\d+))?
-        (?:\+(?P<local>[a-zA-Z0-9\.]+))?
-        $
-        """,
-        re.VERBOSE,
-    ).match(version)
+    assert Version(version).release
