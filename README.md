@@ -7,9 +7,12 @@
 ![](https://img.shields.io/pypi/v/pynxtools-xrm)
 ![Coverage Status](https://coveralls.io/repos/github/FAIRmat-NFDI/pynxtools-xrm/badge.svg?branch=main)
 
-# `pynxtools-xrm`: A `pynxtools` reader for XRM data
+# `pynxtools-xrm`: streaming XRM TIFF conversion
 
-pynxtools reader Reader plugin for reconstructed x-ray microskopy/tomography provides as .tiff files.
+This plugin converts numbered, reconstructed X-ray microscopy TIFF layers into
+a compressed `NXtomoproc` NeXus file. Metadata are handled by a
+`MultiFormatReader`; image pixels are deliberately kept out of its template and
+written one TIFF at a time into a fixed-shape, chunked HDF5 dataset.
 
 This `pynxtools` plugin was generated with [`cookiecutter`](https://github.com/cookiecutter/cookiecutter) using the [`pynxtools-plugin-template`](https://github.com/FAIRmat-NFDI/pynxtools-plugin-template) template.
 
@@ -20,8 +23,23 @@ It is recommended to use python 3.12 with a dedicated virtual environment for th
 This package is a reader plugin for [`pynxtools`](https://github.com/FAIRmat-NFDI/pynxtools) and should be installed together with `pynxtools`:
 
 ```shell
-uv pip install pynxtools[xrm]
+uv pip install -e .
 ```
+
+## Convert a stack
+
+```shell
+pynx-xrm inspect "AvCarb_FLEX_20bar/Bilder 20 bar"
+pynx-xrm convert \
+  --metadata 6100_SDP_XRM_576_001.json \
+  --tiffs "AvCarb_FLEX_20bar/Bilder 20 bar" \
+  --output AvCarb_FLEX_20bar.nxs
+```
+
+The TIFF width becomes X, ascending file number becomes Y, and TIFF height
+becomes Z. Coordinates use the isotropic voxel size from the metadata and are
+centered around zero. See the [architecture and operation guide](docs/architecture.md)
+for the data flow, file responsibilities, assumptions, NOMAD setup, and tests.
 
 for the latest released version.
 

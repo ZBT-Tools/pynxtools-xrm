@@ -19,12 +19,14 @@ Icon
 .Trashes
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
+6100_SDP_XRM_576_001.json
 
 # Directories potentially created on remote AFP share
 .AppleDB
 .AppleDesktop
 Network Trash Folder
 Temporary Items
+AvCarb_FLEX_20bar/
 .apdisk
 
 # https://github.com/github/gitignore/blob/main/Python.gitignore
@@ -153,6 +155,11 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.testenv/
+.testdeps/
+.pip-tmp/
+.runtime-test/
+/AvCarb_FLEX_20bar.nxs
 env/
 venv/
 ENV/
