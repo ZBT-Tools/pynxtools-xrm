@@ -5,7 +5,8 @@ from nomad.config.models.plugins import SchemaPackageEntryPoint
 
 class XRMDataConverterEntryPoint(SchemaPackageEntryPoint):
     def load(self):
-        from pynxtools_xrm.nomad.schema_packages.schema import m_package
+        # NOMAD schema entry points are intentionally lazy-loaded here.
+        from pynxtools_xrm.nomad.schema_packages.schema import m_package  # noqa: PLC0415
 
         return m_package
 
