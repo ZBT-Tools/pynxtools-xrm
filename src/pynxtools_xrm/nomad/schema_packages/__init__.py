@@ -1,17 +1,14 @@
 """NOMAD schema-package entry point for streamed XRM conversion."""
 
+from importlib import import_module
+
 from nomad.config.models.plugins import SchemaPackageEntryPoint
 
 
 class XRMDataConverterEntryPoint(SchemaPackageEntryPoint):
     def load(self):
-        # NOMAD schema entry points are intentionally
-        # lazy-loaded here.
-        from pynxtools_xrm.nomad.schema_packages.schema import (
-            m_package,  # noqa: PLC0415
-        )
-
-        return m_package
+        schema = import_module("pynxtools_xrm.nomad.schema_packages.schema")
+        return schema.m_package
 
 
 xrm_data_converter = XRMDataConverterEntryPoint(
