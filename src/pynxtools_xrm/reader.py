@@ -62,6 +62,28 @@ class XRMReader(MultiFormatReader):
         self.tiff_paths.append(Path(file_path))
         return {}
 
+    def read(
+        self,
+        template: dict | None = None,
+        file_paths: tuple[str, ...] | None = None,
+        objects: tuple[Any, ...] | None = None,
+        **kwargs,
+    ) -> dict:
+        """Run only as the metadata phase of the dedicated streaming converter."""
+
+        if not kwargs.pop("streaming", False):
+            raise RuntimeError(
+                "The XRM volume requires the dedicated streaming writer. "
+                "Use 'pynx-xrm convert' or the NOMAD XRMDataConverter instead "
+                "of standard 'pynx convert'."
+            )
+        return super().read(
+            template=template,
+            file_paths=file_paths,
+            objects=objects,
+            **kwargs,
+        )
+
     def handle_objects(self, objects: tuple[Any]) -> dict[str, Any]:
         for item in objects:
             if isinstance(item, TiffStackManifest):

@@ -168,6 +168,7 @@ def convert_tomoproc(
         template={},
         file_paths=(str(metadata_file),),
         objects=(manifest,),
+        streaming=True,
     )
     if reader.metadata is None:  # defensive: post_process already enforces this
         raise RuntimeError("Metadata reader did not return metadata.")

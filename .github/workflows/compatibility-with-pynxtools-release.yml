@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pynxtools-version: ["latest"]
+        pynxtools-version: ["0.15.0", "latest"]
 
     steps:
       - uses: actions/checkout@v4

@@ -41,6 +41,20 @@ becomes Z. Coordinates use the isotropic voxel size from the metadata and are
 centered around zero. See the [architecture and operation guide](docs/architecture.md)
 for the data flow, file responsibilities, assumptions, NOMAD setup, and tests.
 
+## Supported conversion interfaces
+
+The production interfaces are:
+
+- `pynx-xrm convert` for local or scripted conversion;
+- `XRMDataConverter` for conversion inside a NOMAD Oasis.
+
+Standard `pynx convert --reader xrm` is intentionally not supported. The core
+pynxtools writer expects the complete volume in the reader template, which
+would defeat bounded-memory TIFF streaming. The `xrm` reader entry point is
+retained for pynxtools discovery and supplies the metadata phase to the
+dedicated writer; unsupported calls fail with guidance instead of creating an
+incomplete NXtomoproc file.
+
 for the latest released version.
 
 ## Docs

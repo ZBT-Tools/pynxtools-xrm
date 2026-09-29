@@ -11,6 +11,11 @@ The implementation deliberately combines two mechanisms:
    chunking and gzip filter. It reads exactly one TIFF, writes one Y layer, and
    releases that image before opening the next.
 
+The supported public conversion interfaces are `pynx-xrm convert` and the
+NOMAD `XRMDataConverter`. Standard `pynx convert --reader xrm` is rejected with
+an explanatory error because the core writer cannot consume the streaming
+dataset without first receiving a complete in-memory volume.
+
 Passing all pixels through a normal pynxtools template would require a complete
 3-D NumPy array. Reopening the standard writer in append mode would not solve
 this: an existing dataset is not resized by that writer. The direct HDF5 phase
@@ -142,9 +147,22 @@ Run:
 
 ```shell
 pytest -q
+pytest -q tests/test_pynxtools_integration.py
+pytest -q tests/nomad/test_nomad_streaming.py
 ruff check src tests
 pynx-xrm inspect "AvCarb_FLEX_20bar/Bilder 20 bar"
 ```
+
+The pynxtools integration test discovers the `xrm` entry point, creates a
+streamed file, and validates that file against NXtomoproc using pynxtools. The
+NOMAD tests parse the same kind of generated file and exercise the
+`XRMDataConverter.normalize()` handoff to `process_updated_raw_file`.
+
+The generic `pynxtools.testing.ReaderTest.convert_to_nexus()` is intentionally
+not used: it always invokes the standard in-memory writer after the reader,
+while this plugin's supported contract requires the fixed-shape streaming
+writer. Validation and NOMAD parsing from the pynxtools testing flow are still
+performed directly on the streamed result.
 
 For a production smoke test, run `convert` and inspect `/entry/data/data` with
 HDFView or h5py. Its expected supplied-data shape is `(291, 1017, 1063)`.
