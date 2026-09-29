@@ -72,7 +72,9 @@ def read_elabftw_metadata(path: str | Path) -> XRMMetadata:
     version = _value(fields, "Software version")
     if version in (None, ""):
         version = "unknown"
-        assumptions.append("Reconstruction software version was unavailable; 'unknown' was used.")
+        assumptions.append(
+            "Reconstruction software version was unavailable; 'unknown' was used."
+        )
 
     reconstruction_date = _value(fields, "Measurement date")
     if reconstruction_date in (None, ""):
@@ -100,9 +102,13 @@ def read_elabftw_metadata(path: str | Path) -> XRMMetadata:
             assumptions.append("Raw data path was unavailable; 'unknown' was used.")
 
     instrument = _value(fields, "XRM system / instrument")
-    source_name = f"XRM system / instrument {instrument}" if instrument else "XRM instrument"
+    source_name = (
+        f"XRM system / instrument {instrument}" if instrument else "XRM instrument"
+    )
     if not instrument:
-        assumptions.append("Instrument identifier was unavailable; 'XRM instrument' was used.")
+        assumptions.append(
+            "Instrument identifier was unavailable; 'XRM instrument' was used."
+        )
 
     mapped_parameters = {
         key: _value(fields, key)
@@ -122,11 +128,15 @@ def read_elabftw_metadata(path: str | Path) -> XRMMetadata:
         if _value(fields, key) not in (None, "")
     }
     return XRMMetadata(
-        title=str(source.get("title") or f"Tomographic reconstruction of {sample_name}"),
+        title=str(
+            source.get("title") or f"Tomographic reconstruction of {sample_name}"
+        ),
         sample_name=sample_name,
         source_type="laboratory X-ray tube",
         source_name=source_name,
-        reconstruction_program=str(_value(fields, "Reconstruction software") or "unknown"),
+        reconstruction_program=str(
+            _value(fields, "Reconstruction software") or "unknown"
+        ),
         reconstruction_version=str(version),
         reconstruction_date=str(reconstruction_date),
         raw_file=str(raw_file),

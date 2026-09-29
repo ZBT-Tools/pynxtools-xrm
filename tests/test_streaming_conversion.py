@@ -19,8 +19,7 @@ def _inputs(tmp_path: Path) -> tuple[Path, Path, list[np.ndarray]]:
     tiffs = tmp_path / "layers"
     tiffs.mkdir()
     layers = [
-        np.arange(12, dtype=np.uint16).reshape(3, 4) + index * 100
-        for index in range(3)
+        np.arange(12, dtype=np.uint16).reshape(3, 4) + index * 100 for index in range(3)
     ]
     for index, layer in enumerate(layers, start=1):
         Image.fromarray(layer).save(tiffs / f"slice{index:04d}.tiff")

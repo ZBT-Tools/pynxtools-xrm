@@ -90,7 +90,10 @@ def _write_metadata(
     )
     parameters_prefix = f"{prefix}/parameters/"
     for path, value in template.items():
-        if path.startswith(parameters_prefix) and path != f"{parameters_prefix}raw_file":
+        if (
+            path.startswith(parameters_prefix)
+            and path != f"{parameters_prefix}raw_file"
+        ):
             name = path.removeprefix(parameters_prefix)
             if "/" not in name and not name.startswith("@"):
                 _text(parameters, name, value)

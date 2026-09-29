@@ -67,7 +67,11 @@ def main(argv: list[str] | None = None) -> int:
         overwrite=args.overwrite,
         progress=show_progress,
     )
-    print(json.dumps({**report.__dict__, "output_path": str(report.output_path)}, indent=2))
+    print(
+        json.dumps(
+            {**report.__dict__, "output_path": str(report.output_path)}, indent=2
+        )
+    )
     return 0
 
 
