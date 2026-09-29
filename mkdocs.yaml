@@ -13,6 +13,8 @@ nav:
   - Learning:
     - architecture.md
     - learn/versioning.md
+  - Troubleshooting:
+    - Windows ZIP upload lock: troubleshooting-windows-zip-upload.md
 
 plugins:
   - search
