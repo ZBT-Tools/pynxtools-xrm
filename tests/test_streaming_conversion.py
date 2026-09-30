@@ -33,6 +33,12 @@ def test_multiformat_reader_does_not_add_volume(xrm_inputs):
     assert "/ENTRY[entry]/data/data" not in template
     assert template["/ENTRY[entry]/definition"] == "NXtomoproc"
     assert template["/ENTRY[entry]/data/y"].shape == (3,)
+    assert template["/ENTRY[entry]/USER[user]/name"] == "Example Author"
+    assert template["/ENTRY[entry]/USER[experimenter]/name"] == "Example Operator"
+    assert (
+        template["/ENTRY[entry]/INSTRUMENT[instrument]/DETECTOR[detector]/count_time"]
+        == 4.0
+    )
 
 
 def test_standard_pynxtools_writer_is_rejected_with_guidance(xrm_inputs):
@@ -56,6 +62,8 @@ def test_streamed_volume_shape_orientation_and_compression(tmp_path, xrm_inputs)
     )
     assert report.shape == (4, 3, 3)
     assert report.slices_written == 3
+    assert any("Detector layout" in assumption for assumption in report.assumptions)
+    assert any("signed distances" in assumption for assumption in report.assumptions)
     assert seen == [1, 2, 3]
     with h5py.File(output, "r") as handle:
         data = handle["/entry/data/data"]
@@ -64,6 +72,19 @@ def test_streamed_volume_shape_orientation_and_compression(tmp_path, xrm_inputs)
         assert data.attrs["offset"] == "0.0"
         assert data.attrs["scaling"] == "1.0"
         assert handle["/entry/instrument/source/type"].asstr()[()] == "Fixed Tube X-ray"
+        assert handle["/entry/instrument/name"].asstr()[()] == (
+            "XRM system / instrument 109"
+        )
+        assert handle["/entry/instrument/source/power"][()] == 4.5
+        assert handle["/entry/instrument/source/power"].attrs["units"] == "W"
+        assert handle["/entry/instrument/source/voltage"][()] == 50.0
+        assert handle["/entry/instrument/detector"].attrs["NX_class"] == "NXdetector"
+        assert handle["/entry/instrument/detector/distance"][()] == 5.5
+        assert handle["/entry/instrument/detector/count_time"][()] == 4.0
+        assert handle["/entry/user"].attrs["NX_class"] == "NXuser"
+        assert handle["/entry/user/name"].asstr()[()] == "Example Author"
+        assert handle["/entry/experimenter/name"].asstr()[()] == "Example Operator"
+        assert handle["/entry/sample/description"].asstr()[()] == "test coupon"
         for y_index, layer in enumerate(layers):
             np.testing.assert_array_equal(data[:, y_index, :], layer.T)
         np.testing.assert_allclose(handle["/entry/data/x"][:], centered_axis(4, 0.5))

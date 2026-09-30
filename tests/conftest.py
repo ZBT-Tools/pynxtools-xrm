@@ -27,6 +27,9 @@ def xrm_inputs(tmp_path: Path) -> tuple[Path, Path, list[np.ndarray]]:
         json.dumps(
             {
                 "title": "Synthetic XRM",
+                "fullname": "Example Author",
+                "userid": 42,
+                "team_name": "Example Institute",
                 "metadata_decoded": {
                     "extra_fields": {
                         "Sample name": {"value": "sample-a"},
@@ -36,6 +39,13 @@ def xrm_inputs(tmp_path: Path) -> tuple[Path, Path, list[np.ndarray]]:
                         "Measurement date": {"value": "2026-08-26"},
                         "Raw data path": {"value": "raw.txrm"},
                         "XRM system / instrument": {"value": 109},
+                        "Type": {"value": "test coupon"},
+                        "Experimenter": {"value": "Example Operator"},
+                        "Tube power": {"value": 4.5, "unit": "W"},
+                        "Tube voltage": {"value": 50, "unit": "kV"},
+                        "Source position": {"value": -5.5, "unit": "mm"},
+                        "Detector position": {"value": 5.5, "unit": "mm"},
+                        "Exposure time per image": {"value": 4, "unit": "s"},
                     }
                 },
             }

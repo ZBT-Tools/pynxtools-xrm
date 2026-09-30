@@ -46,6 +46,34 @@ def _text(group: h5py.Group, name: str, value: Any) -> h5py.Dataset:
     return group.create_dataset(name, data=str(value), dtype=h5py.string_dtype("utf-8"))
 
 
+def _optional_value(template: Mapping[str, Any], path: str) -> Any | None:
+    return template.get(path)
+
+
+def _number_with_unit(
+    group: h5py.Group,
+    name: str,
+    value: float,
+    unit: str | None,
+) -> h5py.Dataset:
+    dataset = group.create_dataset(name, data=value)
+    if unit is not None:
+        dataset.attrs["units"] = unit
+    return dataset
+
+
+def _write_optional_number(
+    group: h5py.Group,
+    template: Mapping[str, Any],
+    path: str,
+) -> None:
+    value = _optional_value(template, path)
+    if value is not None:
+        _number_with_unit(
+            group, path.rsplit("/", 1)[-1], value, template.get(f"{path}/@units")
+        )
+
+
 def _write_metadata(
     handle: h5py.File, template: Mapping[str, Any], final_file_name: str
 ) -> h5py.Dataset:
@@ -62,11 +90,22 @@ def _write_metadata(
 
     instrument = entry.create_group("instrument")
     instrument.attrs["NX_class"] = "NXinstrument"
+    instrument_prefix = "/ENTRY[entry]/INSTRUMENT[instrument]"
+    _text(instrument, "name", _template_value(template, f"{instrument_prefix}/name"))
     source = instrument.create_group("source")
     source.attrs["NX_class"] = "NXsource"
     prefix = "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]"
     for name in ("type", "name", "probe"):
         _text(source, name, _template_value(template, f"{prefix}/{name}"))
+    for name in ("distance", "power", "voltage"):
+        _write_optional_number(source, template, f"{prefix}/{name}")
+
+    detector = instrument.create_group("detector")
+    detector.attrs["NX_class"] = "NXdetector"
+    _text(detector, "layout", "area")
+    prefix = f"{instrument_prefix}/DETECTOR[detector]"
+    for name in ("distance", "count_time"):
+        _write_optional_number(detector, template, f"{prefix}/{name}")
 
     sample = entry.create_group("sample")
     sample.attrs["NX_class"] = "NXsample"
@@ -75,6 +114,25 @@ def _write_metadata(
         "name",
         _template_value(template, "/ENTRY[entry]/SAMPLE[sample]/name"),
     )
+    _text(sample, "type", "sample")
+    sample_description = _optional_value(
+        template, "/ENTRY[entry]/SAMPLE[sample]/description"
+    )
+    if sample_description is not None:
+        _text(sample, "description", sample_description)
+
+    for group_name in ("user", "experimenter"):
+        prefix = f"/ENTRY[entry]/USER[{group_name}]"
+        user_name = _optional_value(template, f"{prefix}/name")
+        if user_name is None:
+            continue
+        user = entry.create_group(group_name)
+        user.attrs["NX_class"] = "NXuser"
+        _text(user, "name", user_name)
+        for name in ("role", "affiliation", "facility_user_id", "ORCID"):
+            value = _optional_value(template, f"{prefix}/{name}")
+            if value is not None:
+                _text(user, name, value)
 
     reconstruction = entry.create_group("reconstruction")
     reconstruction.attrs["NX_class"] = "NXprocess"
@@ -127,6 +185,7 @@ def _validate_result(path: Path, expected_shape: tuple[int, int, int]) -> None:
             "/entry/title",
             "/entry/definition",
             "/entry/instrument/source/probe",
+            "/entry/instrument/detector",
             "/entry/sample/name",
             "/entry/reconstruction/program",
             "/entry/reconstruction/version",

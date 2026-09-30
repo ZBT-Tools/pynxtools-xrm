@@ -9,11 +9,36 @@ from typing import Any
 
 
 @dataclass(frozen=True)
+class UserMetadata:
+    """Metadata for one NXuser group."""
+
+    group_name: str
+    name: str
+    role: str | None = None
+    affiliation: str | None = None
+    facility_user_id: str | None = None
+    orcid: str | None = None
+
+
+@dataclass(frozen=True)
 class XRMMetadata:
     title: str
     sample_name: str
+    sample_description: str | None
+    instrument_name: str
     source_type: str
     source_name: str
+    source_distance: float | None
+    source_distance_unit: str | None
+    source_power: float | None
+    source_power_unit: str | None
+    source_voltage: float | None
+    source_voltage_unit: str | None
+    detector_distance: float | None
+    detector_distance_unit: str | None
+    detector_count_time: float | None
+    detector_count_time_unit: str | None
+    users: tuple[UserMetadata, ...]
     reconstruction_program: str
     reconstruction_version: str
     reconstruction_date: str
@@ -26,6 +51,52 @@ class XRMMetadata:
 def _value(fields: dict[str, Any], name: str, default: Any = None) -> Any:
     item = fields.get(name, default)
     return item.get("value", default) if isinstance(item, dict) else item
+
+
+def _unit(fields: dict[str, Any], name: str) -> str | None:
+    item = fields.get(name)
+    if not isinstance(item, dict):
+        return None
+    unit = item.get("unit")
+    return str(unit) if unit not in (None, "") else None
+
+
+def _optional_float(fields: dict[str, Any], name: str) -> float | None:
+    value = _value(fields, name)
+    return None if value in (None, "") else float(value)
+
+
+def _read_users(
+    source: dict[str, Any], fields: dict[str, Any]
+) -> tuple[UserMetadata, ...]:
+    users: list[UserMetadata] = []
+    author = source.get("fullname")
+    if author:
+        users.append(
+            UserMetadata(
+                group_name="user",
+                name=str(author),
+                role="eLabFTW record author",
+                affiliation=(
+                    str(source["team_name"]) if source.get("team_name") else None
+                ),
+                facility_user_id=(
+                    str(source["userid"]) if source.get("userid") is not None else None
+                ),
+                orcid=str(source["orcid"]) if source.get("orcid") else None,
+            )
+        )
+
+    experimenter = _value(fields, "Experimenter")
+    if experimenter and str(experimenter) != str(author):
+        users.append(
+            UserMetadata(
+                group_name="experimenter",
+                name=str(experimenter),
+                role="experimenter",
+            )
+        )
+    return tuple(users)
 
 
 def _choose_raw_file(metadata_path: Path, sample_name: str) -> str | None:
@@ -102,7 +173,7 @@ def read_elabftw_metadata(path: str | Path) -> XRMMetadata:
             assumptions.append("Raw data path was unavailable; 'unknown' was used.")
 
     instrument = _value(fields, "XRM system / instrument")
-    source_name = (
+    instrument_name = (
         f"XRM system / instrument {instrument}" if instrument else "XRM instrument"
     )
     if not instrument:
@@ -127,13 +198,38 @@ def read_elabftw_metadata(path: str | Path) -> XRMMetadata:
         )
         if _value(fields, key) not in (None, "")
     }
+    assumptions.append(
+        "Detector layout was inferred as 'area' from the TIFF image acquisition."
+    )
+    if _value(fields, "Source position") not in (None, "") or _value(
+        fields, "Detector position"
+    ) not in (None, ""):
+        assumptions.append(
+            "Source and detector positions were interpreted as signed distances "
+            "from the sample center."
+        )
     return XRMMetadata(
         title=str(
             source.get("title") or f"Tomographic reconstruction of {sample_name}"
         ),
         sample_name=sample_name,
+        sample_description=(
+            str(_value(fields, "Type")) if _value(fields, "Type") else None
+        ),
+        instrument_name=instrument_name,
         source_type="Fixed Tube X-ray",
-        source_name=source_name,
+        source_name=instrument_name,
+        source_distance=_optional_float(fields, "Source position"),
+        source_distance_unit=_unit(fields, "Source position"),
+        source_power=_optional_float(fields, "Tube power"),
+        source_power_unit=_unit(fields, "Tube power"),
+        source_voltage=_optional_float(fields, "Tube voltage"),
+        source_voltage_unit=_unit(fields, "Tube voltage"),
+        detector_distance=_optional_float(fields, "Detector position"),
+        detector_distance_unit=_unit(fields, "Detector position"),
+        detector_count_time=_optional_float(fields, "Exposure time per image"),
+        detector_count_time_unit=_unit(fields, "Exposure time per image"),
+        users=_read_users(source, fields),
         reconstruction_program=str(
             _value(fields, "Reconstruction software") or "unknown"
         ),

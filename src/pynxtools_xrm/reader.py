@@ -106,6 +106,7 @@ class XRMReader(MultiFormatReader):
         result: dict[str, Any] = {
             "/ENTRY[entry]/title": meta.title,
             "/ENTRY[entry]/definition": "NXtomoproc",
+            "/ENTRY[entry]/INSTRUMENT[instrument]/name": meta.instrument_name,
             "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/type": meta.source_type,
             "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/name": meta.source_name,
             "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/probe": "x-ray",
@@ -121,6 +122,54 @@ class XRMReader(MultiFormatReader):
             "/ENTRY[entry]/data/z": centered_axis(n_z, meta.voxel_size_um),
             "/ENTRY[entry]/data/z/@units": "um",
         }
+        optional_values = {
+            "/ENTRY[entry]/SAMPLE[sample]/description": meta.sample_description,
+            "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/distance": (
+                meta.source_distance
+            ),
+            "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/distance/@units": (
+                meta.source_distance_unit
+            ),
+            "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/power": (
+                meta.source_power
+            ),
+            "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/power/@units": (
+                meta.source_power_unit
+            ),
+            "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/voltage": (
+                meta.source_voltage
+            ),
+            "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/voltage/@units": (
+                meta.source_voltage_unit
+            ),
+            "/ENTRY[entry]/INSTRUMENT[instrument]/DETECTOR[detector]/distance": (
+                meta.detector_distance
+            ),
+            "/ENTRY[entry]/INSTRUMENT[instrument]/DETECTOR[detector]/distance/@units": (
+                meta.detector_distance_unit
+            ),
+            "/ENTRY[entry]/INSTRUMENT[instrument]/DETECTOR[detector]/count_time": (
+                meta.detector_count_time
+            ),
+            "/ENTRY[entry]/INSTRUMENT[instrument]/DETECTOR[detector]/count_time/@units": (
+                meta.detector_count_time_unit
+            ),
+        }
+        result.update(
+            {
+                path: value
+                for path, value in optional_values.items()
+                if value is not None
+            }
+        )
+        for user in meta.users:
+            prefix = f"/ENTRY[entry]/USER[{user.group_name}]"
+            result[f"{prefix}/name"] = user.name
+            for name in ("role", "affiliation", "facility_user_id", "orcid"):
+                value = getattr(user, name)
+                if value is not None:
+                    nexus_name = "ORCID" if name == "orcid" else name
+                    result[f"{prefix}/{nexus_name}"] = value
         for name, value in meta.parameters.items():
             safe_name = name.casefold().replace(" ", "_").replace("/", "_")
             result[f"/ENTRY[entry]/reconstruction/parameters/{safe_name}"] = value
