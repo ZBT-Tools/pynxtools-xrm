@@ -191,8 +191,8 @@ def convert_tomoproc(
             dataset.attrs.update(
                 units="1",
                 transform="none",
-                offset=0.0,
-                scaling=1.0,
+                offset="0.0",
+                scaling="1.0",
                 interpretation="volume",
             )
             total = len(manifest.paths)

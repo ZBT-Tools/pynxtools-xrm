@@ -66,7 +66,7 @@ The required structure follows the official
 | eLabFTW record `title` | `/entry/title` | `6100_SDP_XRM_576_001` |
 | constant | `/entry/definition` | `NXtomoproc` |
 | `XRM system / instrument` | `/entry/instrument/source/name` | `XRM system / instrument 109` |
-| constants | source `type`, `probe` | `laboratory X-ray tube`, `x-ray` |
+| constants | source `type`, `probe` | `Fixed Tube X-ray`, `x-ray` |
 | `Sample name` | `/entry/sample/name` | `AvCarb_FLEX_20bar` |
 | `Reconstruction software` | `/entry/reconstruction/program` | `Dragonfly 3D` |
 | `Software version` | `/entry/reconstruction/version` | fallback `unknown` |
@@ -101,7 +101,7 @@ empty raw-data path is resolved to the largest matching, non-scout `.txrm`
 file. Every fallback is returned in `ConversionReport.assumptions` and stored
 in the NOMAD converter entry.
 
-`transform="none"`, `offset=0.0`, and `scaling=1.0` state explicitly that the
+`transform="none"`, `offset="0.0"`, and `scaling="1.0"` state explicitly that the
 stored reconstructed intensity values are not transformed. Intensity units are
 `1` (dimensionless).
 

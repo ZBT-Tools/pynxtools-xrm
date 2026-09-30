@@ -132,7 +132,7 @@ def read_elabftw_metadata(path: str | Path) -> XRMMetadata:
             source.get("title") or f"Tomographic reconstruction of {sample_name}"
         ),
         sample_name=sample_name,
-        source_type="laboratory X-ray tube",
+        source_type="Fixed Tube X-ray",
         source_name=source_name,
         reconstruction_program=str(
             _value(fields, "Reconstruction software") or "unknown"

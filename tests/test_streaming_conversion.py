@@ -61,6 +61,9 @@ def test_streamed_volume_shape_orientation_and_compression(tmp_path, xrm_inputs)
         data = handle["/entry/data/data"]
         assert data.shape == (4, 3, 3)
         assert data.compression == "gzip"
+        assert data.attrs["offset"] == "0.0"
+        assert data.attrs["scaling"] == "1.0"
+        assert handle["/entry/instrument/source/type"].asstr()[()] == "Fixed Tube X-ray"
         for y_index, layer in enumerate(layers):
             np.testing.assert_array_equal(data[:, y_index, :], layer.T)
         np.testing.assert_allclose(handle["/entry/data/x"][:], centered_axis(4, 0.5))
