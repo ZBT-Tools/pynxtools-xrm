@@ -35,6 +35,10 @@ def test_multiformat_reader_does_not_add_volume(xrm_inputs):
     assert template["/ENTRY[entry]/data/y"].shape == (3,)
     assert template["/ENTRY[entry]/USER[user]/name"] == "Example Author"
     assert template["/ENTRY[entry]/USER[experimenter]/name"] == "Example Operator"
+    assert template["/ENTRY[entry]/entry_identifier"] == "20261002-example"
+    assert template["/ENTRY[entry]/experiment_identifier"] == "project-7"
+    assert template["/ENTRY[entry]/SAMPLE[sample]/temperature"] == 20.0
+    assert template["/ENTRY[entry]/SAMPLE[sample]/POSITIONER[stage_y]/value"] == 2.0
     assert (
         template["/ENTRY[entry]/INSTRUMENT[instrument]/DETECTOR[detector]/count_time"]
         == 4.0
@@ -75,6 +79,10 @@ def test_streamed_volume_shape_orientation_and_compression(tmp_path, xrm_inputs)
         assert handle["/entry/instrument/name"].asstr()[()] == (
             "XRM system / instrument 109"
         )
+        assert (
+            handle["/entry/instrument/source/name"].id
+            == handle["/entry/instrument/name"].id
+        )
         assert handle["/entry/instrument/source/power"][()] == 4.5
         assert handle["/entry/instrument/source/power"].attrs["units"] == "W"
         assert handle["/entry/instrument/source/voltage"][()] == 50.0
@@ -85,6 +93,37 @@ def test_streamed_volume_shape_orientation_and_compression(tmp_path, xrm_inputs)
         assert handle["/entry/user/name"].asstr()[()] == "Example Author"
         assert handle["/entry/experimenter/name"].asstr()[()] == "Example Operator"
         assert handle["/entry/sample/description"].asstr()[()] == "test coupon"
+        assert handle["/entry/sample/temperature"][()] == 20.0
+        assert handle["/entry/sample/stage_z/value"][()] == 3.0
+        assert handle["/entry/sample/stage_z/value"].attrs["units"] == "mm"
+        assert handle["/entry/experiment_identifier"].asstr()[()] == "project-7"
+        assert handle["/entry/collection_time"][()] == 1.0
+        assert handle["/entry/collection_time"].attrs["units"] == "hour"
+        assert handle["/entry/acquisition/number_of_projections"][()] == 1000.0
+        assert (
+            handle["/entry/reconstruction/parameters/beam_hardening_correction"][()]
+            == 0.0
+        )
+        assert (
+            handle["/entry/reconstruction/parameters/beam_hardening_correction"].attrs[
+                "units"
+            ]
+            == "%"
+        )
+        assert handle["/entry/notes/author"].id == handle["/entry/user/name"].id
+        assert (
+            handle["/entry/elabftw/identifier_elabftw"].id
+            == handle["/entry/entry_identifier"].id
+        )
+        assert (
+            handle["/entry/data_provenance/raw_data_path"].id
+            == handle["/entry/reconstruction/parameters/raw_file"].id
+        )
+        assert (
+            handle["/entry/data_provenance/reconstruction_path"].id
+            == handle["/entry/data_provenance/analysis_path"].id
+            == handle["/entry/data_provenance/results_storage_path"].id
+        )
         for y_index, layer in enumerate(layers):
             np.testing.assert_array_equal(data[:, y_index, :], layer.T)
         np.testing.assert_allclose(handle["/entry/data/x"][:], centered_axis(4, 0.5))

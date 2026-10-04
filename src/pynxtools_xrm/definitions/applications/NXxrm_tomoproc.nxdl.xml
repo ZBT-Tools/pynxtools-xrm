@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definition
+    name="NXxrm_tomoproc"
+    type="group"
+    extends="NXtomoproc"
+    category="application"
+    xmlns="http://definition.nexusformat.org/nxdl/3.1"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://definition.nexusformat.org/nxdl/3.1 ../nxdl.xsd">
+  <doc>
+    Optional local extension of NXtomoproc for reconstructed XRM TIFF stacks
+    and eLabFTW provenance. NXtomoproc remains the normative application
+    definition; this definition documents additional optional fields emitted
+    by pynxtools-xrm.
+  </doc>
+  <group type="NXentry">
+    <field name="entry_identifier" optional="true" />
+    <field name="experiment_identifier" optional="true" />
+    <field name="experiment_description" optional="true" />
+    <field name="start_time" type="NX_DATE_TIME" optional="true" />
+    <field name="end_time" type="NX_DATE_TIME" optional="true" />
+    <field name="collection_time" type="NX_FLOAT" units="NX_TIME" optional="true" />
+
+    <group type="NXuser" optional="true" />
+
+    <group type="NXsample">
+      <field name="temperature" type="NX_FLOAT" units="NX_TEMPERATURE" optional="true" />
+      <group name="stage_x" type="NXpositioner" optional="true" />
+      <group name="stage_y" type="NXpositioner" optional="true" />
+      <group name="stage_z" type="NXpositioner" optional="true" />
+      <group name="preparation" type="NXnote" optional="true" />
+    </group>
+
+    <group name="notes" type="NXnote" optional="true">
+      <doc>Free-text acquisition notes. Author is linked to NXuser/name.</doc>
+    </group>
+    <group name="elabftw" type="NXnote" optional="true">
+      <doc>
+        Provenance of the eLabFTW export. identifier_elabftw is a hard link to
+        NXentry/entry_identifier and author is a hard link to NXuser/name.
+      </doc>
+      <field name="identifier_elabftw" optional="true" />
+    </group>
+
+    <group name="acquisition" type="NXcollection" optional="true">
+      <field name="objective" optional="true" />
+      <field name="filter" optional="true" />
+      <field name="binning" optional="true" />
+      <field name="measurement_mode" optional="true" />
+      <field name="roi" optional="true" />
+      <field name="output_format" optional="true" />
+      <field name="images_per_projection" type="NX_NUMBER" optional="true" />
+      <field name="number_of_projections" type="NX_NUMBER" optional="true" />
+      <field name="number_of_measurements" type="NX_NUMBER" optional="true" />
+      <field name="acquisition_pixel_size" type="NX_FLOAT" units="NX_LENGTH" optional="true" />
+      <field name="raw_data_volume" type="NX_FLOAT" units="NX_ANY" optional="true" />
+      <field name="measurement_quality" optional="true" />
+      <field name="sample_holder" optional="true" />
+      <field name="sample_preparation_time" type="NX_FLOAT" units="NX_TIME" optional="true" />
+      <field name="hart_used" optional="true" />
+      <field name="storage_location" optional="true" />
+      <field name="released_for_analysis" optional="true" />
+      <field name="external_measurement_request" optional="true" />
+      <field name="repeat_measurement_required" optional="true" />
+      <field name="repeat_reason" optional="true" />
+      <field name="planned_downstream_analysis" optional="true" />
+      <field name="tags" optional="true" />
+    </group>
+
+    <group name="data_provenance" type="NXcollection" optional="true">
+      <doc>
+        File-system provenance. Equal path values should be HDF5 hard links,
+        not duplicated datasets. raw_data_path links to raw_file.
+      </doc>
+      <field name="raw_data_path" optional="true" />
+      <field name="reconstruction_path" optional="true" />
+      <field name="analysis_path" optional="true" />
+      <field name="results_storage_path" optional="true" />
+      <field name="elabftw_url" optional="true" />
+      <field name="elabftw_record_id" optional="true" />
+      <field name="elabftw_status" optional="true" />
+      <field name="elabftw_modified_at" type="NX_DATE_TIME" optional="true" />
+      <field name="elabftw_template_id" optional="true" />
+      <field name="elabftw_template_type" optional="true" />
+      <field name="elabftw_timestamped_at" type="NX_DATE_TIME" optional="true" />
+    </group>
+
+    <group name="reconstruction" type="NXprocess">
+      <group name="parameters" type="NXparameters">
+        <field name="reconstruction_status" optional="true" />
+        <field name="ring_artifact_correction" optional="true" />
+        <field name="beam_hardening_correction" type="NX_FLOAT" units="NX_ANY" optional="true" />
+        <field name="reconstruction_data_volume" type="NX_FLOAT" units="NX_ANY" optional="true" />
+      </group>
+    </group>
+  </group>
+</definition>

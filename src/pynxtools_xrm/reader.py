@@ -106,6 +106,7 @@ class XRMReader(MultiFormatReader):
         result: dict[str, Any] = {
             "/ENTRY[entry]/title": meta.title,
             "/ENTRY[entry]/definition": "NXtomoproc",
+            "/ENTRY[entry]/definition_local": "NXxrm_tomoproc",
             "/ENTRY[entry]/INSTRUMENT[instrument]/name": meta.instrument_name,
             "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/type": meta.source_type,
             "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/name": meta.source_name,
@@ -123,6 +124,11 @@ class XRMReader(MultiFormatReader):
             "/ENTRY[entry]/data/z/@units": "um",
         }
         optional_values = {
+            "/ENTRY[entry]/entry_identifier": meta.entry_identifier,
+            "/ENTRY[entry]/experiment_identifier": meta.experiment_identifier,
+            "/ENTRY[entry]/experiment_description": meta.experiment_description,
+            "/ENTRY[entry]/start_time": meta.start_time,
+            "/ENTRY[entry]/end_time": meta.end_time,
             "/ENTRY[entry]/SAMPLE[sample]/description": meta.sample_description,
             "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]/distance": (
                 meta.source_distance
@@ -162,6 +168,23 @@ class XRMReader(MultiFormatReader):
                 if value is not None
             }
         )
+        if meta.collection_time is not None:
+            result["/ENTRY[entry]/collection_time"] = meta.collection_time.value
+            if meta.collection_time.unit is not None:
+                result["/ENTRY[entry]/collection_time/@units"] = (
+                    meta.collection_time.unit
+                )
+        if meta.sample_temperature is not None:
+            path = "/ENTRY[entry]/SAMPLE[sample]/temperature"
+            result[path] = meta.sample_temperature.value
+            if meta.sample_temperature.unit is not None:
+                result[f"{path}/@units"] = meta.sample_temperature.unit
+        for name, value in meta.sample_positioners.items():
+            prefix = f"/ENTRY[entry]/SAMPLE[sample]/POSITIONER[{name}]"
+            result[f"{prefix}/name"] = name
+            result[f"{prefix}/value"] = value.value
+            if value.unit is not None:
+                result[f"{prefix}/value/@units"] = value.unit
         for user in meta.users:
             prefix = f"/ENTRY[entry]/USER[{user.group_name}]"
             result[f"{prefix}/name"] = user.name
@@ -170,9 +193,28 @@ class XRMReader(MultiFormatReader):
                 if value is not None:
                     nexus_name = "ORCID" if name == "orcid" else name
                     result[f"{prefix}/{nexus_name}"] = value
-        for name, value in meta.parameters.items():
-            safe_name = name.casefold().replace(" ", "_").replace("/", "_")
-            result[f"/ENTRY[entry]/reconstruction/parameters/{safe_name}"] = value
+        collections = {
+            "/ENTRY[entry]/COLLECTION[acquisition]": meta.acquisition,
+            "/ENTRY[entry]/COLLECTION[data_provenance]": meta.provenance,
+            "/ENTRY[entry]/reconstruction/parameters": (meta.reconstruction_parameters),
+        }
+        for prefix, values in collections.items():
+            for name, value in values.items():
+                path = f"{prefix}/{name}"
+                result[path] = value.value
+                if value.unit is not None:
+                    result[f"{path}/@units"] = value.unit
+        note_values = {
+            "/ENTRY[entry]/NOTE[notes]/data": meta.acquisition_note,
+            "/ENTRY[entry]/SAMPLE[sample]/NOTE[preparation]/data": (
+                meta.sample_preparation
+            ),
+            "/ENTRY[entry]/NOTE[elabftw]/date": meta.elabftw_created_at,
+            "/ENTRY[entry]/NOTE[elabftw]/file_name": meta.elabftw_file_name,
+        }
+        result.update(
+            {path: value for path, value in note_values.items() if value is not None}
+        )
         return result
 
 

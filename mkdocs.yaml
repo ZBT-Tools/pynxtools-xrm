@@ -12,6 +12,7 @@ nav:
     - tutorial/contributing.md
   - Learning:
     - architecture.md
+    - metadata-mapping.md
     - learn/versioning.md
   - Troubleshooting:
     - Windows ZIP upload lock: troubleshooting-windows-zip-upload.md
