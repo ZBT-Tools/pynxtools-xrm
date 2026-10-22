@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definition name="NXxrm_image" type="group" extends="NXobject" category="application"
+ xmlns="http://definition.nexusformat.org/nxdl/3.1">
+ <doc>Single X-ray microscopy image. Local application profile using general NeXus base classes.</doc>
+ <group type="NXentry">
+  <field name="definition"><enumeration><item value="NXxrm_image"/></enumeration></field>
+  <field name="title"/>
+  <group name="sample" type="NXsample"><field name="name"/></group>
+  <group name="instrument" type="NXinstrument">
+   <group name="source" type="NXsource"><field name="probe"><enumeration><item value="x-ray"/></enumeration></field></group>
+   <group name="detector" type="NXdetector">
+    <field name="data" type="NX_NUMBER"><dimensions rank="2"><dim index="1" value="nRows"/><dim index="2" value="nColumns"/></dimensions></field>
+   </group>
+  </group>
+  <group name="image" type="NXimage">
+   <group name="image_2d" type="NXdata">
+    <attribute name="signal"/>
+    <attribute name="axes"/>
+    <field name="intensity" type="NX_NUMBER" units="NX_UNITLESS"><dimensions rank="2"><dim index="1" value="nRows"/><dim index="2" value="nColumns"/></dimensions></field>
+    <field name="axis_j" type="NX_FLOAT" units="NX_LENGTH"><dimensions rank="1"><dim index="1" value="nRows"/></dimensions></field>
+    <field name="axis_i" type="NX_FLOAT" units="NX_LENGTH"><dimensions rank="1"><dim index="1" value="nColumns"/></dimensions></field>
+   </group>
+  </group>
+  <group name="conversion" type="NXprocess">
+   <field name="program"/><field name="version"/><field name="date" type="NX_DATE_TIME"/>
+   <group name="parameters" type="NXparameters"><field name="source_file"/></group>
+  </group>
+ </group>
+</definition>

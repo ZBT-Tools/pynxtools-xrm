@@ -1,94 +1,63 @@
-# eLabFTW metadata mapping
+# Metadata mapping and strict validation
 
-The mapping is based on field names and types, not on the example values in
-`test_metadata.json`. Every field in the tables is optional unless it is
-already required by `NXtomoproc`. Missing optional fields are omitted.
+Effective precedence is image > associated RCP > eLabFTW > explicit missing values.
+Conflicting lower-priority values remain in provenance. Explicit configuration
+cannot change an existing value. Invalid high-priority metadata are not replaced.
+RCP settings are preserved as recipe settings; nominal angle limits are never
+used to fabricate measured angle arrays. All RCP streams remain recoverable from
+entry/recipe/data (JSON with raw_streams_base64).
 
-The official application definition remains `NXtomoproc`. The packaged local
-extension `NXxrm_tomoproc.nxdl.xml` documents the additional optional fields
-and is referenced through `NXentry/definition_local`.
+| Required content | NXtomo | NXtomoproc | NXxrm_image | ZEISS source |
+|---|---|---|---|---|
+| Sample name | yes | yes | yes | assigned RCP SampleName or ELN/config |
+| Image pixels / dimensions / datatype | yes | yes | yes | ImageInfo and ImageData blocks |
+| Theta and stage X/Y/Z | profile | profile | profile | Angles, X/Y/ZPosition; TXM MeanSampleX/Y/Z |
+| Rotation angle array / image_key | yes | no | no | measured Angles; primary TXRM projections key=0 |
+| Cubic object pixel/voxel size | optional | yes | yes | ImageInfo/PixelSize (um) |
+| Source name / type | optional | yes | optional | explicit proven source; numeric SourceType not decoded |
+| Reconstruction program/version/date | no | yes | no | missing in inspected TXM; no exeVersion/date fallback |
+| Raw acquisition file | no | yes | no | ReconSettings/InputFileName or assigned RCP |
+| Physical image orientation | local axes | yes | local axes | explicit calibrated row/column axes and signs |
+| Volume origin | no | TIFF required | no | explicit TIFF origin; measured TXM Y plus local X/Z offsets |
 
-## Standard NeXus base-class fields
+The NXDL validator is authoritative for the pinned application contract. Profile
+requirements add geometry and provenance checks. Missing fields are reported
+together by MissingRequiredMetadata before output creation where possible.
 
-| eLabFTW field | NeXus path | Base class | Unit handling |
-|---|---|---|---|
-| `elabid` | `/entry/entry_identifier` | `NXentry` | n/a |
-| `Project` | `/entry/experiment_identifier` | `NXentry` | n/a |
-| `Research question` | `/entry/experiment_description` | `NXentry` | n/a |
-| `Measurement start` | `/entry/start_time` | `NXentry` | ISO 8601 date-time |
-| `Measurement end` | `/entry/end_time` | `NXentry` | ISO 8601 date-time |
-| `Tube / tomography time` | `/entry/collection_time` | `NXentry` | source unit required |
-| `fullname`, `userid`, `team_name`, `orcid` | `/entry/user/*` | `NXuser` | n/a |
-| `Experimenter` | `/entry/experimenter/*` | `NXuser` | n/a |
-| `Owner` | `/entry/owner/*` | `NXuser` | n/a |
-| `Sample name` | `/entry/sample/name` | `NXsample` | n/a |
-| `Type` | `/entry/sample/description` | `NXsample` | n/a |
-| `Sample temperature` | `/entry/sample/temperature` | `NXsample` | `°C` is normalized to `degC` |
-| `Stage X/Y/Z` | `/entry/sample/stage_x/y/z/value` | `NXpositioner` | source length unit required |
-| `Sample preparation` | `/entry/sample/preparation/data` | `NXnote` | n/a |
-| `Acquisition notes` | `/entry/notes/data` | `NXnote` | n/a |
-| eLabFTW export metadata | `/entry/elabftw/*` | `NXnote` | date-time where applicable |
-| `Tube power` | `/entry/instrument/source/power` | `NXsource` | source power unit required |
-| `Tube voltage` | `/entry/instrument/source/voltage` | `NXsource` | source voltage unit required |
-| `Source position` | `/entry/instrument/source/distance` | `NXsource` | source length unit required |
-| `Detector position` | `/entry/instrument/detector/distance` | `NXdetector` | source length unit required |
-| `Exposure time per image` | `/entry/instrument/detector/count_time` | `NXdetector` | source time unit required |
-| reconstruction fields | `/entry/reconstruction/*` | `NXprocess`, `NXparameters` | field-specific |
+| Optional metadata | Destination / handling |
+|---|---|
+| XrayVoltage, XrayCurrent, ExpTimes | NXsource voltage/current, detector count_time |
+| Acquisition ImageInfo/StoRADistance, DtoRADistance | Signed X transformations in mm; never sample-center distance |
+| TXM ReconInputTomoParams/StoRADistance, DtoRADistance | Positive magnitudes in um, converted to mm and placed on the confirmed global axis: source -X, detector +X. TXM ImageInfo distances are not decoded using the acquisition convention. |
+| CameraName, CameraSerialNumberString | Detector description and serial_number |
+| ObjectiveName, SourceFilterName | instrument/optics/objective and instrument/filter/description; manufacturer bytes retained |
+| ImageInfo/Date | Berlin frame_times in provenance; first projection timestamp as start_time |
+| TXM ImageInfo/Date | Layer timestamps retained; never asserted as reconstruction process time |
+| CamPixelSize | Sensor pitch retained distinctly from object voxel/pixel calibration |
+| IsFlatPanel and unknown vendor fields | Raw stream bytes with original OLE paths |
+| eLabFTW identity/project/sample/users/notes | NXentry, NXsample, NXuser and NXnote |
+| Additional acquisition/reconstruction/storage fields | Native scalar/array datasets in optional domain NXcollections; no serialized eLabFTW JSON |
 
-## Optional local application fields
+All full local timestamps use Europe/Berlin, with real UTC conversion for aware
+values. Full timestamp fields reject date-only strings, DST gaps and ambiguous
+local times. The optional acquisition/measurement_date preserves a calendar date
+without inventing a time. Original ZEISS bytes and the RCP recipe remain as
+provenance notes. Conversion time is the
+actual new conversion time and is distinct from acquisition/reconstruction time.
 
-Acquisition fields without a more specific standard base-class field are
-stored once below `/entry/acquisition` (`NXcollection`). They include
-`Objective`, `Filter`, `Binning`, `Measurement mode`, `ROI / scan region`,
-`Output format`, projection counts, acquisition pixel size, raw data volume,
-measurement quality, sample holder, sample preparation time, HART use, storage
-and release flags, repeat/external-request fields, downstream analysis, and
-tags.
+The eLabFTW field registry is maintained in elabftw.py. Standard NXsample,
+NXsource, NXdetector, NXfilter, NXuser, NXentry and NXprocess fields are used where
+their semantics match. Additional fields live in named domain NXcollections,
+which are optional base-class extensions rather than required application fields.
+Instrument item identifiers are resolved to names only through an exact linked
+record match. Multiselect text fields remain native UTF-8 arrays. Form settings,
+access control, history and UI fields have no verified domain destination and
+are listed individually in metadata_provenance/elabftw_mapping (source_path,
+target_path, status, reason). Empty fields are reported separately. Unknown
+populated extra fields retain their native value/unit under unmapped_metadata.
+The original eLabFTW JSON is not embedded, including in the provenance group.
+Lower-priority conflicting values and selected field origins are native datasets.
 
-Reconstruction-specific status and correction settings are stored below
-`/entry/reconstruction/parameters`: reconstruction status, ring-artifact
-correction, beam-hardening correction, and reconstruction data volume.
-
-File-system provenance is stored below `/entry/data_provenance`
-(`NXcollection`). Windows paths describe the acquisition workstation and are
-not interpreted as paths inside a NOMAD Oasis.
-
-## No duplicated datasets
-
-- Source power, source voltage, source/detector position, and exposure time are
-  only written to their corresponding instrument base classes, not repeated in
-  reconstruction parameters.
-- If the available metadata only supplies one shared instrument/source name,
-  `/entry/instrument/source/name` is a hard link to `/entry/instrument/name`.
-- `/entry/data_provenance/raw_data_path` is a hard link to
-  `/entry/reconstruction/parameters/raw_file`.
-- Equal raw, reconstruction, analysis, or results paths are represented by
-  HDF5 hard links. If their values differ in a future record, separate datasets
-  are created.
-- `/entry/elabftw/identifier_elabftw` is a hard link to
-  `/entry/entry_identifier`.
-- `NXnote/author` is a hard link to `/entry/user/name`.
-
-## Unit audit
-
-All physically dimensional numeric fields in the supplied field schema have a
-unit: stage and component positions, tube power and voltage, temperature,
-pixel/voxel size, acquisition and preparation times, exposure time, data
-volumes, and beam-hardening correction.
-
-The following fields intentionally have no unit because they are counts or
-dimensionless values: `Binning`, `Objective` magnification, `Images per
-projection`, `Number of projections`, and `Number of individual measurements`.
-For `Objective`, the example schema encodes magnification as text such as
-`20x`; a future numeric field should use `units="1"`.
-
-There are no missing physical units in the current schema, but there are three
-metadata-quality gaps which units cannot solve:
-
-1. Stage, source, and detector positions do not define their coordinate-system
-   origin or sign convention.
-2. Local date-times do not include a UTC offset or named time zone.
-3. `GB` does not state whether decimal gigabytes or binary gibibytes are meant.
-
-The converter preserves these source facts and does not invent the missing
-semantics.
+The single-image profile is a local application named NXxrm_image using generic
+NXimage and NXdata; it does not mislabel X-ray microscopy as electron microscopy
+through NXem. Its NXDL is packaged and added to an explicit definitions overlay.

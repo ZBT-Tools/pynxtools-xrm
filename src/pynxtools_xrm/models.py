@@ -48,10 +48,11 @@ class ConversionReport:
     """Information needed to audit a completed conversion."""
 
     output_path: Path
-    shape: tuple[int, int, int]
+    shape: tuple[int, ...]
     dtype: str
-    chunks: tuple[int, int, int]
+    chunks: tuple[int, ...]
     compression: str
     compression_level: int
     slices_written: int
     assumptions: tuple[str, ...] = field(default_factory=tuple)
+    reused: bool = False

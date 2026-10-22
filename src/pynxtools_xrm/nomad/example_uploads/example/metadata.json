@@ -1,0 +1,63 @@
+{
+  "title": "Synthetic XRM example",
+  "created_at": "2026-10-05T10:00:00+02:00",
+  "metadata_decoded": {
+    "extra_fields": {
+      "Sample name": {
+        "value": "synthetic sample"
+      },
+      "Acquisition pixel size": {
+        "value": 500,
+        "unit": "nm"
+      },
+      "Reconstruction software": {
+        "value": "synthetic example generator"
+      },
+      "Software version": {
+        "value": "1.0"
+      },
+      "Reconstruction date": {
+        "value": "2026-10-05T10:05:00+02:00"
+      },
+      "Raw data path": {
+        "value": "synthetic.txrm"
+      },
+      "Reconstructed voxel size": {
+        "value": 0.5,
+        "unit": "um"
+      },
+      "Source name": {
+        "value": "Synthetic tube"
+      },
+      "Source type": {
+        "value": "Fixed Tube X-ray"
+      },
+      "Stage X": {
+        "value": 0,
+        "unit": "um"
+      },
+      "Stage Y": {
+        "value": 0,
+        "unit": "um"
+      },
+      "Stage Z": {
+        "value": 0,
+        "unit": "um"
+      }
+    }
+  },
+  "xrm_configuration": {
+    "theta": 0,
+    "volume_origin_um": [
+      -0.75,
+      -0.5,
+      -0.5
+    ],
+    "image_orientation": {
+      "row_axis": "z",
+      "column_axis": "x",
+      "row_sign": 1,
+      "column_sign": 1
+    }
+  }
+}

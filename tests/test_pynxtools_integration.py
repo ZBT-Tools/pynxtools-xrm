@@ -17,7 +17,7 @@ def test_xrm_reader_entry_point_is_discoverable():
 
     reader = get_reader("xrm")
     assert reader is XRMReader
-    assert reader.supported_nxdls == ["NXtomoproc"]
+    assert reader.supported_nxdls == ["NXtomo", "NXtomoproc", "NXxrm_image"]
 
 
 def test_streaming_output_passes_pynxtools_validation(tmp_path, xrm_inputs, caplog):

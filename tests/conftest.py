@@ -35,6 +35,16 @@ def xrm_inputs(tmp_path: Path) -> tuple[Path, Path, list[np.ndarray]]:
                 "sharelink": "https://example.test/experiments/42",
                 "status_title": "Success",
                 "tags": "ct|xrm",
+                "xrm_configuration": {
+                    "theta": 0,
+                    "image_orientation": {
+                        "row_axis": "z",
+                        "column_axis": "x",
+                        "row_sign": 1,
+                        "column_sign": 1,
+                    },
+                    "volume_origin_um": [-0.75, -0.5, -0.5],
+                },
                 "metadata_decoded": {
                     "extra_fields": {
                         "Sample name": {"value": "sample-a"},
@@ -43,9 +53,13 @@ def xrm_inputs(tmp_path: Path) -> tuple[Path, Path, list[np.ndarray]]:
                         "Stage Y": {"value": 2, "unit": "mm"},
                         "Stage Z": {"value": 3, "unit": "mm"},
                         "Acquisition pixel size": {"value": 0.5, "unit": "um"},
+                        "Reconstructed voxel size": {"value": 0.5, "unit": "um"},
+                        "Source name": {"value": "Synthetic tube"},
+                        "Source type": {"value": "Fixed Tube X-ray"},
                         "Reconstruction software": {"value": "Dragonfly 3D"},
                         "Software version": {"value": "2024.1"},
                         "Measurement date": {"value": "2026-08-26"},
+                        "Reconstruction date": {"value": "2026-08-27T10:00:00+02:00"},
                         "Raw data path": {"value": "raw.txrm"},
                         "Reconstruction path": {"value": "result"},
                         "Analysis path": {"value": "result"},

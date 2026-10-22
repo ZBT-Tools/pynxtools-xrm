@@ -1,68 +1,39 @@
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-![](https://github.com/FAIRmat-NFDI/pynxtools-xrm/actions/workflows/pytest.yml/badge.svg)
-![](https://github.com/FAIRmat-NFDI/pynxtools-xrm/actions/workflows/pylint.yml/badge.svg)
-![](https://github.com/FAIRmat-NFDI/pynxtools-xrm/actions/workflows/publish.yml/badge.svg)
-![](https://img.shields.io/pypi/pyversions/pynxtools-xrm)
-![](https://img.shields.io/pypi/l/pynxtools-xrm)
-![](https://img.shields.io/pypi/v/pynxtools-xrm)
-![Coverage Status](https://coveralls.io/repos/github/FAIRmat-NFDI/pynxtools-xrm/badge.svg?branch=main)
+# pynxtools-xrm
 
-# `pynxtools-xrm`: streaming XRM TIFF conversion
+Sequential ZEISS TXRM, TXM, XRM and numbered TIFF conversion for NeXus and NOMAD.
+TXRM produces NXtomo projections, TXM produces NXtomoproc volumes, and XRM uses
+the local NXxrm_image application based on NXimage/NXdata. Each image file has
+its own output. RCP is associated recipe metadata and creates no separate entry.
 
-This plugin converts numbered, reconstructed X-ray microscopy TIFF layers into
-a compressed `NXtomoproc` NeXus file. Metadata are handled by a
-`MultiFormatReader`; image pixels are deliberately kept out of its template and
-written one TIFF at a time into a fixed-shape, chunked HDF5 dataset.
+Install with `uv pip install -e .`. The supported pynxtools series is 0.15.x.
+Prepare the shared definitions overlay and set NEXUS_DEF_PATH **before** starting
+Python, the NOMAD app and its workers:
 
-This `pynxtools` plugin was generated with [`cookiecutter`](https://github.com/cookiecutter/cookiecutter) using the [`pynxtools-plugin-template`](https://github.com/FAIRmat-NFDI/pynxtools-plugin-template) template.
-
-## Installation
-
-It is recommended to use python 3.12 with a dedicated virtual environment for this package. Learn how to manage [python versions](https://github.com/pyenv/pyenv) and [virtual environments](https://realpython.com/python-virtual-environments-a-primer/).
-
-This package is a reader plugin for [`pynxtools`](https://github.com/FAIRmat-NFDI/pynxtools) and should be installed together with `pynxtools`:
-
-```shell
-uv pip install -e .
+```powershell
+pynx-xrm definitions --output run/xrm-definitions
+$env:NEXUS_DEF_PATH = (Resolve-Path run/xrm-definitions).Path
 ```
 
-## Convert a stack
-
 ```shell
-pynx-xrm inspect "AvCarb_FLEX_20bar/Bilder 20 bar"
-pynx-xrm convert \
-  --metadata 6100_SDP_XRM_576_001.json \
-  --tiffs "AvCarb_FLEX_20bar/Bilder 20 bar" \
-  --output AvCarb_FLEX_20bar.nxs
+pynx-xrm inspect acquisition.txrm
+pynx-xrm inspect recipe.rcp
+pynx-xrm convert --input acquisition.txrm --recipe recipe.rcp --output acquisition.nxs
+pynx-xrm convert --tiffs layers --target NXtomoproc --metadata metadata.json --output volume.nxs
 ```
 
-The TIFF width becomes X, ascending file number becomes Y, and TIFF height
-becomes Z. Coordinates use the isotropic voxel size from the metadata and are
-centered around zero. See the [architecture and operation guide](docs/architecture.md)
-for the data flow, file responsibilities, assumptions, NOMAD setup, and tests.
+Use `--supplements missing-values.json` for explicit missing values. Existing
+image, recipe or eLabFTW values cannot be overwritten. Missing required metadata
+raise an error before output creation. Acquisition timestamps are localized to
+Europe/Berlin; incomplete dates and ambiguous daylight-saving times are errors.
 
-## Supported conversion interfaces
+In NOMAD, upload the image files and associated metadata together. The binary
+parser selects the target automatically. TIFF stacks continue to use
+XRMDataConverter archive.yaml with target_definition NXtomo or NXtomoproc.
+After adding/changing sidecars, reprocess the upload to rerun dependent files.
 
-The production interfaces are:
+The core pynxtools Writer writes metadata; a small HDF5 adapter streams one
+image at a time. Standard `pynx convert --reader xrm` rejects the call with
+guidance because it has no frame-iterator writer contract.
 
-- `pynx-xrm convert` for local or scripted conversion;
-- `XRMDataConverter` for conversion inside a NOMAD Oasis.
-
-Standard `pynx convert --reader xrm` is intentionally not supported. The core
-pynxtools writer expects the complete volume in the reader template, which
-would defeat bounded-memory TIFF streaming. The `xrm` reader entry point is
-retained for pynxtools discovery and supplies the metadata phase to the
-dedicated writer; unsupported calls fail with guidance instead of creating an
-incomplete NXtomoproc file.
-
-for the latest released version.
-
-## Docs
-
-More information about this pynxtools plugin is available in the [documentation](https://fairmat-nfdi.github.io/pynxtools-xrm/). You will find information about getting started, how-to guides, the supported file formats, how to get involved, and much more there.
-
-## Contact person in FAIRmat for this reader
-
-The NOMAD Authors
-
-<!-- ## How to cite this work -->
+See [architecture](docs/architecture.md), [metadata mapping](docs/metadata-mapping.md)
+and [installation](docs/tutorial/installation.md).

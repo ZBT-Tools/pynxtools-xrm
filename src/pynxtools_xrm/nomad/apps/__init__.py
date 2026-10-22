@@ -28,8 +28,11 @@ except ImportError as exc:
 schema = "pynxtools.nomad.schema.Root"
 
 xrm_app = AppEntryPoint(
-    name="XRM App",
-    description="App for XRM data.",
+    name="XRM App (legacy parser)",
+    description=(
+        "Search app for XRM image, NXtomo and NXtomoproc entries produced by the configured legacy "
+        "pynxtools NeXus parser. V2 parser field paths are intentionally not claimed."
+    ),
     app=App(
         label="XRM",
         path="xrmapp",
@@ -38,7 +41,11 @@ xrm_app = AppEntryPoint(
             include=[f"*#{schema}"],
         ),
         filters_locked={
-            f"data.ENTRY.definition__field#{schema}": ["NXtomoproc"],
+            f"data.ENTRY.definition__field#{schema}": [
+                "NXtomo",
+                "NXtomoproc",
+                "NXxrm_image",
+            ],
         },
         columns=Columns(
             selected=["entry_id"],

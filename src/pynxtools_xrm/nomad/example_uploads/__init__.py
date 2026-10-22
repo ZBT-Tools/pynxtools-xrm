@@ -25,9 +25,12 @@ except ImportError as exc:
     ) from exc
 
 xrm_example_upload = ExampleUploadEntryPoint(
-    title="",
+    title="XRM streamed NXtomoproc conversion",
     category="NeXus Experiment Examples",
-    description="""""",
+    description=(
+        "A minimal XRMDataConverter archive, eLabFTW metadata, and a tiny numbered "
+        "TIFF stack demonstrating bounded-memory NXtomoproc conversion."
+    ),
     plugin_package="pynxtools_xrm",
     resources=["nomad/example_uploads/example/*"],
 )

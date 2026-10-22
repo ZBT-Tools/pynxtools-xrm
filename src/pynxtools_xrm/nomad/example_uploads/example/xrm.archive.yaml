@@ -1,0 +1,9 @@
+data:
+  m_def: pynxtools_xrm.nomad.schema_packages.schema.XRMDataConverter
+  metadata_file: metadata.json
+  target_definition: NXtomoproc
+  tiff_directory: layers
+  output: xrm_example.nxs
+  gzip_level: 1
+  target_chunk_mib: 0.01
+  export: true

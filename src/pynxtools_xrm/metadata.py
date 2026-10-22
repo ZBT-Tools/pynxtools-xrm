@@ -1,427 +1,242 @@
-"""Translate the eLabFTW JSON export into NXtomoproc metadata."""
+"""Partial source metadata, strict precedence and field-level provenance."""
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+
+import numpy as np
+
+from pynxtools_xrm.elabftw import FIELDS, populated
+from pynxtools_xrm.errors import MetadataConflict, MissingRequiredMetadata
+from pynxtools_xrm.geometry import berlin_timestamp
+
+LENGTH_TO_UM = {
+    "nm": 0.001,
+    "um": 1.0,
+    "µm": 1.0,
+    "μm": 1.0,
+    "mm": 1000.0,
+    "cm": 10000.0,
+    "m": 1000000.0,
+}
 
 
-@dataclass(frozen=True)
-class UserMetadata:
-    """Metadata for one NXuser group."""
-
-    group_name: str
-    name: str
-    role: str | None = None
-    affiliation: str | None = None
-    facility_user_id: str | None = None
-    orcid: str | None = None
-
-
-@dataclass(frozen=True)
-class MetadataValue:
-    """A scalar NeXus value and its optional physical unit."""
-
-    value: Any
-    unit: str | None = None
-
-
-@dataclass(frozen=True)
-class XRMMetadata:
-    title: str
-    entry_identifier: str | None
-    experiment_identifier: str | None
-    experiment_description: str | None
-    start_time: str | None
-    end_time: str | None
-    collection_time: MetadataValue | None
-    sample_name: str
-    sample_description: str | None
-    sample_temperature: MetadataValue | None
-    sample_positioners: dict[str, MetadataValue]
-    instrument_name: str
-    source_type: str
-    source_name: str
-    source_distance: float | None
-    source_distance_unit: str | None
-    source_power: float | None
-    source_power_unit: str | None
-    source_voltage: float | None
-    source_voltage_unit: str | None
-    detector_distance: float | None
-    detector_distance_unit: str | None
-    detector_count_time: float | None
-    detector_count_time_unit: str | None
-    users: tuple[UserMetadata, ...]
-    reconstruction_program: str
-    reconstruction_version: str
-    reconstruction_date: str
-    raw_file: str
-    voxel_size_um: float
-    acquisition: dict[str, MetadataValue]
-    reconstruction_parameters: dict[str, MetadataValue]
-    provenance: dict[str, MetadataValue]
-    acquisition_note: str | None
-    sample_preparation: str | None
-    elabftw_created_at: str | None
-    elabftw_file_name: str
-    assumptions: tuple[str, ...]
-
-
-def _value(fields: dict[str, Any], name: str, default: Any = None) -> Any:
-    item = fields.get(name, default)
-    return item.get("value", default) if isinstance(item, dict) else item
-
-
-def _unit(fields: dict[str, Any], name: str) -> str | None:
-    item = fields.get(name)
-    if not isinstance(item, dict):
-        return None
-    unit = item.get("unit")
-    if unit in (None, ""):
-        return None
-    return {
-        "µm": "um",
-        "μm": "um",
-        "°C": "degC",
-        "h": "hour",
-        "min": "minute",
-        "s": "second",
-    }.get(str(unit), str(unit))
-
-
-def _optional_float(fields: dict[str, Any], name: str) -> float | None:
-    value = _value(fields, name)
-    return None if value in (None, "") else float(value)
-
-
-def _optional_text(fields: dict[str, Any], name: str) -> str | None:
-    value = _value(fields, name)
-    if value in (None, "", []):
-        return None
-    if isinstance(value, list):
-        return "; ".join(str(item) for item in value)
-    return str(value)
-
-
-def _metadata_value(
-    fields: dict[str, Any], name: str, *, numeric: bool = False
-) -> MetadataValue | None:
-    value = _value(fields, name)
-    if value in (None, "", []):
-        return None
-    if numeric:
-        value = float(value)
-    elif isinstance(value, list):
-        value = "; ".join(str(item) for item in value)
-    return MetadataValue(value=value, unit=_unit(fields, name))
-
-
-def _collect_fields(
-    fields: dict[str, Any], mapping: dict[str, tuple[str, bool]]
-) -> dict[str, MetadataValue]:
-    result: dict[str, MetadataValue] = {}
-    for nexus_name, (source_name, numeric) in mapping.items():
-        value = _metadata_value(fields, source_name, numeric=numeric)
-        if value is not None:
-            result[nexus_name] = value
+def positive_length(value, unit):
+    if unit not in LENGTH_TO_UM:
+        raise ValueError(f"A supported explicit length unit is required: {unit!r}")
+    result = float(value) * LENGTH_TO_UM[unit]
+    if not np.isfinite(result) or result <= 0:
+        raise ValueError("Length must be finite and greater than zero")
     return result
 
 
-def _iso_datetime(
-    value: Any,
-    field_name: str,
-    assumptions: list[str],
-) -> str | None:
-    if value in (None, ""):
-        return None
-    text = str(value).replace(" ", "T")
-    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-        assumptions.append(
-            f"{field_name} had no timezone; UTC was used to produce a valid "
-            "NX_DATE_TIME value."
-        )
-    return parsed.isoformat()
+def json_value(value):
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, Path):
+        return str(value)
+    raise TypeError(type(value).__name__)
 
 
-def _read_users(
-    source: dict[str, Any], fields: dict[str, Any]
-) -> tuple[UserMetadata, ...]:
-    users: list[UserMetadata] = []
-    author = source.get("fullname")
-    if author:
-        users.append(
-            UserMetadata(
-                group_name="user",
-                name=str(author),
-                role="eLabFTW record author",
-                affiliation=(
-                    str(source["team_name"]) if source.get("team_name") else None
-                ),
-                facility_user_id=(
-                    str(source["userid"]) if source.get("userid") is not None else None
-                ),
-                orcid=str(source["orcid"]) if source.get("orcid") else None,
-            )
-        )
+@dataclass
+class ResolvedMetadata:
+    values: dict = field(default_factory=dict)
+    origins: dict = field(default_factory=dict)
+    conflicts: list = field(default_factory=list)
+    sources: dict = field(default_factory=dict)
 
-    experimenter = _value(fields, "Experimenter")
-    if experimenter and str(experimenter) != str(author):
-        users.append(
-            UserMetadata(
-                group_name="experimenter",
-                name=str(experimenter),
-                role="experimenter",
-            )
-        )
-    owner = _value(fields, "Owner")
-    if owner and str(owner) not in {str(author), str(experimenter)}:
-        users.append(
-            UserMetadata(
-                group_name="owner",
-                name=str(owner),
-                role="data owner",
-            )
-        )
-    return tuple(users)
+    def add(self, values, source, *, supplement=False):
+        for key, value in values.items():
+            if value is None or (isinstance(value, str) and not value.strip()):
+                continue
+            if key in self.values:
+                equal = json.dumps(
+                    self.values[key], default=json_value, sort_keys=True
+                ) == json.dumps(value, default=json_value, sort_keys=True)
+                if not equal:
+                    if supplement:
+                        raise MetadataConflict(
+                            f"Explicit {key} cannot override {self.origins[key]}"
+                        )
+                    self.conflicts.append(
+                        {
+                            "field": key,
+                            "selected_source": self.origins[key],
+                            "other_source": source,
+                            "other_value": value,
+                        }
+                    )
+                continue
+            self.values[key], self.origins[key] = value, source
 
-
-def _choose_raw_file(metadata_path: Path, sample_name: str) -> str | None:
-    candidates = []
-    for path in metadata_path.parent.rglob("*.txrm"):
-        lowered = path.name.casefold()
-        penalty = sum(token in lowered for token in ("drift", "scout", "reference"))
-        sample_match = sample_name.casefold().replace("_", "") in lowered.replace(
-            "_", ""
-        )
-        candidates.append(
-            (penalty, not sample_match, -path.stat().st_size, path.as_posix(), path)
-        )
-    if not candidates:
-        return None
-    selected = min(candidates)[-1]
-    return selected.relative_to(metadata_path.parent).as_posix()
+    def require(self, target, keys):
+        missing = [
+            k
+            for k in keys
+            if k not in self.values
+            or self.values[k] is None
+            or (isinstance(self.values[k], str) and not self.values[k].strip())
+        ]
+        if missing:
+            raise MissingRequiredMetadata(target, missing)
 
 
-def read_elabftw_metadata(path: str | Path) -> XRMMetadata:
-    """Read the supplied eLabFTW JSON and apply documented fallbacks."""
-
-    path = Path(path)
-    with path.open("r", encoding="utf-8") as stream:
-        source = json.load(stream)
-    fields = source.get("metadata_decoded", {}).get("extra_fields", {})
+def read_elabftw_metadata(path):
+    """Return partial values without fabricating reconstruction metadata."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    fields = raw.get("metadata_decoded", {}).get("extra_fields", {})
     if not isinstance(fields, dict):
-        raise ValueError("metadata_decoded.extra_fields must be a JSON object")
-
-    assumptions: list[str] = []
-    sample_name = str(_value(fields, "Sample name") or source.get("title") or "sample")
-    voxel_size = _value(fields, "Reconstructed voxel size")
-    if voxel_size in (None, ""):
-        voxel_size = _value(fields, "Acquisition pixel size")
-        assumptions.append(
-            "Reconstructed voxel size was empty; Acquisition pixel size was used "
-            "isotropically for X, Y and Z."
-        )
-    if voxel_size in (None, ""):
-        raise ValueError(
-            "Neither Reconstructed voxel size nor Acquisition pixel size is present."
-        )
-
-    version = _value(fields, "Software version")
-    if version in (None, ""):
-        version = "unknown"
-        assumptions.append(
-            "Reconstruction software version was unavailable; 'unknown' was used."
-        )
-
-    reconstruction_date_source = _value(fields, "Measurement date")
-    if reconstruction_date_source in (None, ""):
-        reconstruction_date_source = source.get("modified_at") or source.get(
-            "created_at"
-        )
-        assumptions.append(
-            "Reconstruction date was unavailable; the eLabFTW record timestamp was used."
-        )
-    if reconstruction_date_source in (None, ""):
-        reconstruction_date_source = datetime.fromtimestamp(
-            path.stat().st_mtime, tz=timezone.utc
-        ).isoformat()
-        assumptions.append(
-            "No reconstruction or eLabFTW timestamp was available; the metadata "
-            "file modification time was used."
-        )
-    reconstruction_date = _iso_datetime(
-        reconstruction_date_source, "Measurement date", assumptions
-    )
-
-    raw_file = _value(fields, "Raw data path")
-    if raw_file in (None, ""):
-        raw_file = _choose_raw_file(path, sample_name)
-        if raw_file:
-            assumptions.append(
-                "Raw data path was empty; the largest matching non-scout TXRM file "
-                "was selected."
+        raise ValueError("metadata_decoded.extra_fields must be an object")
+    result = {}
+    conversions = {
+        "exposure_s": {"s": 1.0, "second": 1.0, "ms": 0.001},
+        "source_voltage_kv": {"kV": 1.0, "V": 0.001},
+        "source_power_w": {"W": 1.0, "mW": 0.001},
+        "source_x_mm": {k: v / 1000 for k, v in LENGTH_TO_UM.items()},
+        "detector_x_mm": {k: v / 1000 for k, v in LENGTH_TO_UM.items()},
+    }
+    mapping = {key: label for label, (key, _, _) in FIELDS.items()}
+    for key, field_name in mapping.items():
+        item = fields.get(field_name, {})
+        value = item.get("value") if isinstance(item, dict) else item
+        if not populated(value):
+            continue
+        unit = item.get("unit") if isinstance(item, dict) else None
+        if key in conversions:
+            if unit not in conversions[key]:
+                raise ValueError(
+                    f"Missing or unsupported unit for {field_name}: {unit}"
+                )
+            value = float(value) * conversions[key][unit]
+        elif key in {
+            "binning",
+            "images_per_projection",
+            "number_of_projections",
+            "number_of_measurements",
+        }:
+            number = float(value)
+            if not np.isfinite(number) or not number.is_integer() or number <= 0:
+                raise ValueError(f"{field_name} must be a positive integer")
+            value = int(number)
+        elif key in {
+            "hart_used",
+            "released_for_analysis",
+            "repeat_measurement_required",
+        }:
+            if isinstance(value, str) and value in {"Yes", "No"}:
+                value = value == "Yes"
+        if key in {"reconstruction_date", "start_time", "end_time"}:
+            value = berlin_timestamp(value)
+        result[key] = value
+        if unit is not None and key not in conversions:
+            result[key + "_unit"] = {"h": "hour", "min": "minute", "°C": "degC"}.get(
+                unit, unit
             )
-        else:
-            raw_file = "unknown"
-            assumptions.append("Raw data path was unavailable; 'unknown' was used.")
-
-    instrument = _value(fields, "XRM system / instrument")
-    instrument_name = (
-        f"XRM system / instrument {instrument}" if instrument else "XRM instrument"
-    )
-    if not instrument:
-        assumptions.append(
-            "Instrument identifier was unavailable; 'XRM instrument' was used."
-        )
-
-    acquisition = _collect_fields(
-        fields,
-        {
-            "objective": ("Objective", False),
-            "filter": ("Filter", False),
-            "binning": ("Binning", False),
-            "measurement_mode": ("Measurement mode", False),
-            "roi": ("ROI / scan region", False),
-            "output_format": ("Output format", False),
-            "images_per_projection": ("Images per projection", True),
-            "number_of_projections": ("Number of projections", True),
-            "number_of_measurements": (
-                "Number of individual measurements",
-                True,
-            ),
-            "acquisition_pixel_size": ("Acquisition pixel size", True),
-            "raw_data_volume": ("Raw data volume", True),
-            "measurement_quality": ("Measurement quality", False),
-            "sample_holder": ("Sample holder / fixture", False),
-            "sample_preparation_time": ("Sample preparation time", True),
-            "hart_used": ("HART used", False),
-            "storage_location": ("Storage location", False),
-            "released_for_analysis": ("Released for analysis", False),
-            "external_measurement_request": (
-                "External measurement request",
-                False,
-            ),
-            "repeat_measurement_required": (
-                "Repeat measurement required",
-                False,
-            ),
-            "repeat_reason": ("Reason for repeat / limitation", False),
-            "planned_downstream_analysis": (
-                "Planned downstream analysis",
-                False,
-            ),
-        },
-    )
-    if source.get("tags"):
-        acquisition["tags"] = MetadataValue(str(source["tags"]))
-
-    reconstruction_parameters = _collect_fields(
-        fields,
-        {
-            "reconstruction_status": ("Reconstruction status", False),
-            "ring_artifact_correction": ("Ring artifact correction", False),
-            "beam_hardening_correction": ("Beam hardening correction", True),
-            "reconstruction_data_volume": ("Reconstruction data volume", True),
-        },
-    )
-    provenance = _collect_fields(
-        fields,
-        {
-            "raw_data_path": ("Raw data path", False),
-            "reconstruction_path": ("Reconstruction path", False),
-            "analysis_path": ("Analysis path", False),
-            "results_storage_path": ("Results storage path", False),
-        },
-    )
-    for name, value in {
-        "elabftw_url": source.get("sharelink"),
-        "elabftw_record_id": source.get("id"),
-        "elabftw_status": source.get("status_title"),
-        "elabftw_modified_at": _iso_datetime(
-            source.get("modified_at"), "eLabFTW modified_at", assumptions
-        ),
-        "elabftw_template_id": source.get("created_from_id"),
-        "elabftw_template_type": source.get("created_from_type_human"),
-        "elabftw_timestamped_at": _iso_datetime(
-            source.get("timestamped_at"), "eLabFTW timestamped_at", assumptions
-        ),
+    instrument = result.get("instrument_name")
+    if isinstance(instrument, int) or (
+        isinstance(instrument, str) and instrument.isdigit()
+    ):
+        result["instrument_identifier"] = instrument
+        del result["instrument_name"]
+        matches = [
+            link
+            for link in raw.get("items_links", [])
+            if str(link.get("entityid")) == str(instrument) and link.get("title")
+        ]
+        if len(matches) == 1:
+            result["instrument_name"] = matches[0]["title"]
+    for key, label in (
+        ("pixel_size_um", "Reconstructed voxel size"),
+        ("object_pixel_size_um", "Acquisition pixel size"),
+    ):
+        item = fields.get(label, {})
+        if item.get("value") not in (None, ""):
+            result[key] = positive_length(item["value"], item.get("unit"))
+    for axis in "xyz":
+        item = fields.get("Stage " + axis.upper(), {})
+        if item.get("value") not in (None, ""):
+            unit = item.get("unit")
+            if unit not in LENGTH_TO_UM:
+                raise ValueError(f"Stage {axis} requires an explicit length unit")
+            result[f"stage_{axis}_um"] = float(item["value"]) * LENGTH_TO_UM[unit]
+    for dest, src in {
+        "title": "title",
+        "author": "fullname",
+        "author_affiliation": "team_name",
+        "entry_identifier": "elabid",
+        "elabftw_url": "sharelink",
+        "author_orcid": "orcid",
+        "author_id": "userid",
+        "tags": "tags",
     }.items():
-        if value not in (None, ""):
-            provenance[name] = MetadataValue(value)
+        if raw.get(src):
+            result[dest] = raw[src]
+    config = raw.get("xrm_configuration", {})
+    if not isinstance(config, dict) or set(config) - {
+        "theta",
+        "image_orientation",
+        "volume_origin_um",
+        "image_key",
+    }:
+        raise ValueError("Invalid explicit xrm_configuration in JSON")
+    result.update(config)
+    return result, raw
 
-    sample_positioners = _collect_fields(
-        fields,
-        {
-            "stage_x": ("Stage X", True),
-            "stage_y": ("Stage Y", True),
-            "stage_z": ("Stage Z", True),
-        },
-    )
-    assumptions.append(
-        "Detector layout was inferred as 'area' from the TIFF image acquisition."
-    )
-    if _value(fields, "Source position") not in (None, "") or _value(
-        fields, "Detector position"
-    ) not in (None, ""):
-        assumptions.append(
-            "Source and detector positions were interpreted as signed distances "
-            "from the sample center."
+
+def resolve_metadata(
+    source,
+    *,
+    recipe_match=None,
+    metadata_file=None,
+    supplements=None,
+    target="NXtomoproc",
+):
+    meta = ResolvedMetadata()
+    image_values = dict(source.values)
+    if source.kind in {".txrm", ".xrm"} and "pixel_size_um" in image_values:
+        image_values["object_pixel_size_um"] = image_values["pixel_size_um"]
+    if source.kind == ".txrm":
+        image_values["number_of_projections"] = source.frame_count
+    meta.add(image_values, str(source.path))
+    if recipe_match:
+        recipe, point_name, point = recipe_match
+        meta.sources["recipe"] = recipe
+        meta.add(
+            {"sample_name": point.get("SampleName")},
+            f"{recipe['path']}:{point_name}/SampleName",
         )
-    return XRMMetadata(
-        title=str(
-            source.get("title") or f"Tomographic reconstruction of {sample_name}"
-        ),
-        entry_identifier=(str(source["elabid"]) if source.get("elabid") else None),
-        experiment_identifier=_optional_text(fields, "Project"),
-        experiment_description=_optional_text(fields, "Research question"),
-        start_time=_iso_datetime(
-            _value(fields, "Measurement start"), "Measurement start", assumptions
-        ),
-        end_time=_iso_datetime(
-            _value(fields, "Measurement end"), "Measurement end", assumptions
-        ),
-        collection_time=_metadata_value(fields, "Tube / tomography time", numeric=True),
-        sample_name=sample_name,
-        sample_description=(
-            str(_value(fields, "Type")) if _value(fields, "Type") else None
-        ),
-        sample_temperature=_metadata_value(fields, "Sample temperature", numeric=True),
-        sample_positioners=sample_positioners,
-        instrument_name=instrument_name,
-        source_type="Fixed Tube X-ray",
-        source_name=instrument_name,
-        source_distance=_optional_float(fields, "Source position"),
-        source_distance_unit=_unit(fields, "Source position"),
-        source_power=_optional_float(fields, "Tube power"),
-        source_power_unit=_unit(fields, "Tube power"),
-        source_voltage=_optional_float(fields, "Tube voltage"),
-        source_voltage_unit=_unit(fields, "Tube voltage"),
-        detector_distance=_optional_float(fields, "Detector position"),
-        detector_distance_unit=_unit(fields, "Detector position"),
-        detector_count_time=_optional_float(fields, "Exposure time per image"),
-        detector_count_time_unit=_unit(fields, "Exposure time per image"),
-        users=_read_users(source, fields),
-        reconstruction_program=str(
-            _value(fields, "Reconstruction software") or "unknown"
-        ),
-        reconstruction_version=str(version),
-        reconstruction_date=str(reconstruction_date),
-        raw_file=str(raw_file),
-        voxel_size_um=float(voxel_size),
-        acquisition=acquisition,
-        reconstruction_parameters=reconstruction_parameters,
-        provenance=provenance,
-        acquisition_note=_optional_text(fields, "Acquisition notes"),
-        sample_preparation=_optional_text(fields, "Sample preparation"),
-        elabftw_created_at=_iso_datetime(
-            source.get("created_at"), "eLabFTW created_at", assumptions
-        ),
-        elabftw_file_name=path.name,
-        assumptions=tuple(assumptions),
-    )
+        if target == "NXtomoproc":
+            meta.add(
+                {"raw_file": point.get("AcqFileName")},
+                f"{recipe['path']}:{point_name}/AcquisitionSettings/AcqFileName",
+            )
+    if metadata_file:
+        values, raw = read_elabftw_metadata(metadata_file)
+        if target != "NXtomoproc" and "pixel_size_um" in values:
+            values["declared_reconstructed_voxel_size_um"] = values.pop("pixel_size_um")
+        meta.sources["elabftw"] = raw
+        meta.origins["_elabftw_source"] = str(metadata_file)
+        meta.add(values, str(metadata_file))
+    meta.add(supplements or {}, "explicit configuration", supplement=True)
+    meta.values.setdefault("title", source.path.name)
+    meta.origins.setdefault("title", "generated source filename label")
+    if (
+        target != "NXtomoproc"
+        and "pixel_size_um" not in source.values
+        and "object_pixel_size_um" in meta.values
+    ):
+        meta.values.setdefault("pixel_size_um", meta.values["object_pixel_size_um"])
+        meta.origins.setdefault("pixel_size_um", meta.origins["object_pixel_size_um"])
+    if "pixel_size_um" in meta.values:
+        a = np.asarray(meta.values["pixel_size_um"])
+        if a.size != 1 or not np.isfinite(a.item()) or a.item() <= 0:
+            raise ValueError("Voxel/pixel size must be finite and greater than zero")
+        meta.values["pixel_size_um"] = float(a.item())
+    for key in ("reconstruction_date", "start_time", "end_time"):
+        if key in meta.values:
+            meta.values[key] = berlin_timestamp(meta.values[key])
+    return meta

@@ -1,456 +1,265 @@
-"""Fixed-shape, chunked HDF5 writer for NXtomoproc volumes."""
+"""One atomic conversion lifecycle, standard metadata Writer and frame streaming."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
-from collections.abc import Callable, Mapping
-from datetime import datetime, timezone
+import tempfile
+from contextlib import contextmanager
+from dataclasses import asdict, replace
 from pathlib import Path
-from typing import Any
 
 import h5py
 import numpy as np
+from pynxtools.dataconverter import helpers
+from pynxtools.dataconverter.validate_file import validate_hdf_group_against
+from pynxtools.dataconverter.writer import Writer
 
+from pynxtools_xrm.metadata import json_value
 from pynxtools_xrm.models import CompressionConfig, ConversionReport
 from pynxtools_xrm.reader import XRMReader
-from pynxtools_xrm.tiff_stack import discover_tiff_stack, iter_tiff_layers
-
-ProgressCallback = Callable[[int, int, Path], None]
-
-
-def _chunk_shape(
-    volume_shape: tuple[int, int, int], dtype: np.dtype, target_bytes: int
-) -> tuple[int, int, int]:
-    """Choose chunks aligned to a single Y layer and below the target size."""
-
-    n_x, _, n_z = volume_shape
-    chunk_x, chunk_z = n_x, n_z
-    while chunk_x * chunk_z * dtype.itemsize > target_bytes:
-        if chunk_z >= chunk_x and chunk_z > 1:
-            chunk_z = (chunk_z + 1) // 2
-        elif chunk_x > 1:
-            chunk_x = (chunk_x + 1) // 2
-        else:
-            break
-    return chunk_x, 1, chunk_z
+from pynxtools_xrm.tiff_stack import TiffSource, discover_tiff_stack
+from pynxtools_xrm.zeiss import ZeissSource
 
 
-def _template_value(template: Mapping[str, Any], path: str) -> Any:
+@contextmanager
+def _exclusive_output_lock(output_file):
+    lock = output_file.with_name(f".{output_file.name}.lock")
     try:
-        return template[path]
-    except KeyError as exc:
-        raise ValueError(f"Required reader value is missing: {path}") from exc
+        descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as exc:
+        raise RuntimeError(
+            f"Another XRM conversion is targeting {output_file}"
+        ) from exc
+    try:
+        os.close(descriptor)
+        yield
+    finally:
+        lock.unlink(missing_ok=True)
 
 
-def _text(group: h5py.Group, name: str, value: Any) -> h5py.Dataset:
-    return group.create_dataset(name, data=str(value), dtype=h5py.string_dtype("utf-8"))
+def _chunk_shape(shape, dtype, target_bytes, stream_axis=0):
+    chunks = list(shape)
+    if len(chunks) == 3:
+        chunks[stream_axis] = 1
+    while np.prod(chunks) * np.dtype(dtype).itemsize > target_bytes:
+        axis = max(range(len(chunks)), key=lambda i: chunks[i])
+        chunks[axis] = max(1, (chunks[axis] + 1) // 2)
+    return tuple(chunks)
 
 
-def _optional_value(template: Mapping[str, Any], path: str) -> Any | None:
-    return template.get(path)
-
-
-def _number_with_unit(
-    group: h5py.Group,
-    name: str,
-    value: float,
-    unit: str | None,
-) -> h5py.Dataset:
-    dataset = group.create_dataset(name, data=value)
-    if unit is not None:
-        dataset.attrs["units"] = unit
-    return dataset
-
-
-def _scalar_with_unit(
-    group: h5py.Group,
-    name: str,
-    value: Any,
-    unit: str | None = None,
-) -> h5py.Dataset:
-    if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(
-        value, bool
-    ):
-        return _number_with_unit(group, name, value, unit)
-    dataset = _text(group, name, value)
-    if unit is not None:
-        dataset.attrs["units"] = unit
-    return dataset
-
-
-def _write_template_fields(
-    group: h5py.Group,
-    template: Mapping[str, Any],
-    prefix: str,
-    *,
-    exclude: set[str] | None = None,
-) -> dict[str, h5py.Dataset]:
-    """Write direct children below a template prefix, preserving scalar types."""
-
-    datasets: dict[str, h5py.Dataset] = {}
-    exclude = exclude or set()
-    for path, value in template.items():
-        if not path.startswith(f"{prefix}/") or path.endswith("/@units"):
-            continue
-        name = path.removeprefix(f"{prefix}/")
-        if "/" in name or name.startswith("@") or name in exclude:
-            continue
-        datasets[name] = _scalar_with_unit(
-            group, name, value, template.get(f"{path}/@units")
-        )
-    return datasets
-
-
-def _write_note(
-    parent: h5py.Group,
-    name: str,
-    template: Mapping[str, Any],
-    prefix: str,
-    *,
-    author: h5py.Dataset | None = None,
-) -> h5py.Group | None:
-    fields = {
-        field: template.get(f"{prefix}/{field}")
-        for field in ("date", "file_name", "description", "data")
-    }
-    if not any(value is not None for value in fields.values()):
-        return None
-    note = parent.create_group(name)
-    note.attrs["NX_class"] = "NXnote"
-    if author is not None:
-        note["author"] = author
-    for field, value in fields.items():
-        if value is not None:
-            if field == "data":
-                note.create_dataset(field, data=np.bytes_(str(value).encode("utf-8")))
-            else:
-                _text(note, field, value)
-    if fields["data"] is not None:
-        _text(note, "type", "text/plain")
-    return note
-
-
-def _write_optional_number(
-    group: h5py.Group,
-    template: Mapping[str, Any],
-    path: str,
-) -> None:
-    value = _optional_value(template, path)
-    if value is not None:
-        _number_with_unit(
-            group, path.rsplit("/", 1)[-1], value, template.get(f"{path}/@units")
-        )
-
-
-def _write_metadata(
-    handle: h5py.File, template: Mapping[str, Any], final_file_name: str
-) -> h5py.Dataset:
-    handle.attrs["default"] = "entry"
-    handle.attrs["file_name"] = final_file_name
-    handle.attrs["file_time"] = datetime.now(timezone.utc).isoformat()
-    handle.attrs["HDF5_Version"] = h5py.version.hdf5_version
-    handle.attrs["h5py_version"] = h5py.version.version
-
-    entry = handle.create_group("entry")
-    entry.attrs.update(NX_class="NXentry", default="data")
-    _text(entry, "title", _template_value(template, "/ENTRY[entry]/title"))
-    _text(entry, "definition", "NXtomoproc")
-    definition_local = _text(entry, "definition_local", "NXxrm_tomoproc")
-    definition_local.attrs["URL"] = (
-        "https://github.com/FAIRmat-NFDI/pynxtools-xrm/blob/main/"
-        "src/pynxtools_xrm/definitions/applications/NXxrm_tomoproc.nxdl.xml"
-    )
-    entry_identifier = None
-    for name in (
-        "entry_identifier",
-        "experiment_identifier",
-        "experiment_description",
-        "start_time",
-        "end_time",
-    ):
-        value = _optional_value(template, f"/ENTRY[entry]/{name}")
-        if value is not None:
-            dataset = _text(entry, name, value)
-            if name == "entry_identifier":
-                entry_identifier = dataset
-    collection_time = _optional_value(template, "/ENTRY[entry]/collection_time")
-    if collection_time is not None:
-        _number_with_unit(
-            entry,
-            "collection_time",
-            collection_time,
-            template.get("/ENTRY[entry]/collection_time/@units"),
-        )
-
-    instrument = entry.create_group("instrument")
-    instrument.attrs["NX_class"] = "NXinstrument"
-    instrument_prefix = "/ENTRY[entry]/INSTRUMENT[instrument]"
-    instrument_name_value = _template_value(template, f"{instrument_prefix}/name")
-    instrument_name = _text(instrument, "name", instrument_name_value)
-    source = instrument.create_group("source")
-    source.attrs["NX_class"] = "NXsource"
-    prefix = "/ENTRY[entry]/INSTRUMENT[instrument]/SOURCE[source]"
-    for name in ("type", "probe"):
-        _text(source, name, _template_value(template, f"{prefix}/{name}"))
-    source_name = _template_value(template, f"{prefix}/name")
-    if str(source_name) == str(instrument_name_value):
-        source["name"] = instrument_name
-    else:
-        _text(source, "name", source_name)
-    for name in ("distance", "power", "voltage"):
-        _write_optional_number(source, template, f"{prefix}/{name}")
-
-    detector = instrument.create_group("detector")
-    detector.attrs["NX_class"] = "NXdetector"
-    _text(detector, "layout", "area")
-    prefix = f"{instrument_prefix}/DETECTOR[detector]"
-    for name in ("distance", "count_time"):
-        _write_optional_number(detector, template, f"{prefix}/{name}")
-
-    sample = entry.create_group("sample")
-    sample.attrs["NX_class"] = "NXsample"
-    _text(
-        sample,
-        "name",
-        _template_value(template, "/ENTRY[entry]/SAMPLE[sample]/name"),
-    )
-    _text(sample, "type", "sample")
-    sample_description = _optional_value(
-        template, "/ENTRY[entry]/SAMPLE[sample]/description"
-    )
-    if sample_description is not None:
-        _text(sample, "description", sample_description)
-    _write_optional_number(sample, template, "/ENTRY[entry]/SAMPLE[sample]/temperature")
-    for name in ("stage_x", "stage_y", "stage_z"):
-        prefix = f"/ENTRY[entry]/SAMPLE[sample]/POSITIONER[{name}]"
-        value = _optional_value(template, f"{prefix}/value")
-        if value is None:
-            continue
-        positioner = sample.create_group(name)
-        positioner.attrs["NX_class"] = "NXpositioner"
-        _text(positioner, "name", _template_value(template, f"{prefix}/name"))
-        _number_with_unit(
-            positioner,
-            "value",
-            value,
-            template.get(f"{prefix}/value/@units"),
-        )
-
-    user_name_datasets: dict[str, h5py.Dataset] = {}
-    for group_name in ("user", "experimenter", "owner"):
-        prefix = f"/ENTRY[entry]/USER[{group_name}]"
-        user_name = _optional_value(template, f"{prefix}/name")
-        if user_name is None:
-            continue
-        user = entry.create_group(group_name)
-        user.attrs["NX_class"] = "NXuser"
-        user_name_datasets[group_name] = _text(user, "name", user_name)
-        for name in ("role", "affiliation", "facility_user_id", "ORCID"):
-            value = _optional_value(template, f"{prefix}/{name}")
-            if value is not None:
-                _text(user, name, value)
-
-    reconstruction = entry.create_group("reconstruction")
-    reconstruction.attrs["NX_class"] = "NXprocess"
-    prefix = "/ENTRY[entry]/reconstruction"
-    for name in ("program", "version", "date"):
-        _text(reconstruction, name, _template_value(template, f"{prefix}/{name}"))
-    parameters = reconstruction.create_group("parameters")
-    parameters.attrs["NX_class"] = "NXparameters"
-    raw_file = _text(
-        parameters,
-        "raw_file",
-        _template_value(template, f"{prefix}/parameters/raw_file"),
-    )
-    parameters_prefix = f"{prefix}/parameters/"
-    _write_template_fields(
-        parameters,
-        template,
-        parameters_prefix.rstrip("/"),
-        exclude={"raw_file"},
-    )
-
-    acquisition = entry.create_group("acquisition")
-    acquisition.attrs["NX_class"] = "NXcollection"
-    _write_template_fields(
-        acquisition, template, "/ENTRY[entry]/COLLECTION[acquisition]"
-    )
-
-    provenance = entry.create_group("data_provenance")
-    provenance.attrs["NX_class"] = "NXcollection"
-    provenance_prefix = "/ENTRY[entry]/COLLECTION[data_provenance]"
-    path_datasets: dict[str, h5py.Dataset] = {str(raw_file.asstr()[()]): raw_file}
-    for name in (
-        "raw_data_path",
-        "reconstruction_path",
-        "analysis_path",
-        "results_storage_path",
-    ):
-        value = _optional_value(template, f"{provenance_prefix}/{name}")
-        if value is None:
-            continue
-        key = str(value)
-        if key in path_datasets:
-            provenance[name] = path_datasets[key]
-        else:
-            path_datasets[key] = _text(provenance, name, value)
-    _write_template_fields(
-        provenance,
-        template,
-        provenance_prefix,
-        exclude={
-            "raw_data_path",
-            "reconstruction_path",
-            "analysis_path",
-            "results_storage_path",
-        },
-    )
-
-    author = user_name_datasets.get("user")
-    _write_note(
-        entry,
-        "notes",
-        template,
-        "/ENTRY[entry]/NOTE[notes]",
-        author=author,
-    )
-    _write_note(
-        sample,
-        "preparation",
-        template,
-        "/ENTRY[entry]/SAMPLE[sample]/NOTE[preparation]",
-        author=author,
-    )
-    elabftw = _write_note(
-        entry,
-        "elabftw",
-        template,
-        "/ENTRY[entry]/NOTE[elabftw]",
-        author=author,
-    )
-    if elabftw is not None and entry_identifier is not None:
-        elabftw["identifier_elabftw"] = entry_identifier
-
-    data_group = entry.create_group("data")
-    data_group.attrs["NX_class"] = "NXdata"
-    data_group.attrs["signal"] = "data"
-    data_group.attrs.create(
-        "axes", np.asarray(["x", "y", "z"], dtype=h5py.string_dtype("utf-8"))
-    )
-    for position, axis_name in enumerate(("x", "y", "z"), start=1):
-        axis_path = f"/ENTRY[entry]/data/{axis_name}"
-        axis = data_group.create_dataset(axis_name, data=template[axis_path])
-        axis.attrs["units"] = template[f"{axis_path}/@units"]
-        axis.attrs["axis"] = position
-    return data_group
-
-
-def _validate_result(path: Path, expected_shape: tuple[int, int, int]) -> None:
-    """Run structural checks that do not require loading the volume."""
-
-    with h5py.File(path, "r") as handle:
-        dataset = handle["/entry/data/data"]
-        if dataset.shape != expected_shape:
-            raise RuntimeError(
-                f"Written shape {dataset.shape} does not match {expected_shape}."
-            )
-        if dataset.chunks is None or dataset.compression != "gzip":
-            raise RuntimeError("Volume dataset is not chunked and gzip-compressed.")
-        for required in (
-            "/entry/title",
-            "/entry/definition",
-            "/entry/instrument/source/probe",
-            "/entry/instrument/detector",
-            "/entry/sample/name",
-            "/entry/reconstruction/program",
-            "/entry/reconstruction/version",
-            "/entry/reconstruction/date",
-            "/entry/reconstruction/parameters/raw_file",
-            "/entry/data/x",
-            "/entry/data/y",
-            "/entry/data/z",
+def _validate_result(
+    path, expected_shape, target="NXtomoproc", dataset_path="/entry/data/data"
+):
+    with h5py.File(path, "r") as h:
+        data = h[dataset_path]
+        if data.shape != expected_shape or data.compression != "gzip":
+            raise RuntimeError("Written dataset violates shape/compression contract")
+        if target == "NXtomo":
+            if h["entry/sample/rotation_angle"].shape != (expected_shape[0],) or h[
+                "entry/instrument/detector/image_key"
+            ].shape != (expected_shape[0],):
+                raise RuntimeError("NXtomo frame metadata dimensions disagree")
+        if not validate_hdf_group_against(
+            target, h["entry"], str(path), ignore_undocumented=True
         ):
-            if required not in handle:
-                raise RuntimeError(f"Required NXtomoproc path is missing: {required}")
+            raise RuntimeError(f"NXDL validation failed for {target}")
 
 
-def convert_tomoproc(
-    metadata_file: str | Path,
-    tiff_directory: str | Path,
-    output_file: str | Path,
+def _identity(source, target, meta, compression, nxdl_path):
+    paths = source.manifest.paths if isinstance(source, TiffSource) else (source.path,)
+    stamps = [(str(p), p.stat().st_size, p.stat().st_mtime_ns) for p in paths]
+    payload = {
+        "inputs": stamps,
+        "target": target,
+        "values": meta.values,
+        "sources": meta.sources,
+        "compression": asdict(compression),
+        "nxdl_sha256": hashlib.sha256(Path(nxdl_path).read_bytes()).hexdigest(),
+        "implementation": {
+            p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in Path(__file__).parent.glob("*.py")
+        },
+    }
+    return hashlib.sha256(
+        json.dumps(payload, default=json_value, sort_keys=True).encode()
+    ).hexdigest(), stamps
+
+
+def convert(
+    input_path,
+    output_file,
     *,
-    compression: CompressionConfig | None = None,
-    overwrite: bool = False,
-    progress: ProgressCallback | None = None,
-) -> ConversionReport:
-    """Convert a numbered TIFF stack without ever constructing a 3-D array."""
-
-    metadata_file = Path(metadata_file).resolve()
-    output_file = Path(output_file).resolve()
-    manifest = discover_tiff_stack(tiff_directory)
+    target_definition=None,
+    metadata_file=None,
+    recipe_paths=(),
+    supplements=None,
+    compression=None,
+    overwrite=False,
+    progress=None,
+):
+    input_path, output = Path(input_path).resolve(), Path(output_file).resolve()
+    if output.suffix.casefold() != ".nxs" or output == input_path:
+        raise ValueError("Output must be a separate .nxs file")
+    source = (
+        TiffSource(discover_tiff_stack(input_path))
+        if input_path.is_dir()
+        else ZeissSource(input_path)
+    )
+    if isinstance(source, TiffSource) and output in source.manifest.paths:
+        raise ValueError("Output aliases an input TIFF")
     compression = compression or CompressionConfig()
     compression.validate()
-    if output_file.exists() and not overwrite:
-        raise FileExistsError(f"Output exists; pass overwrite=True: {output_file}")
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output_file.with_name(f".{output_file.name}.part")
-    if temporary.exists():
-        temporary.unlink()
-
     reader = XRMReader()
     template = reader.read(
         template={},
-        file_paths=(str(metadata_file),),
-        objects=(manifest,),
+        objects=(source,),
         streaming=True,
+        target_definition=target_definition,
+        metadata_file=metadata_file,
+        recipe_paths=recipe_paths,
+        supplements=supplements,
     )
-    if reader.metadata is None:  # defensive: post_process already enforces this
-        raise RuntimeError("Metadata reader did not return metadata.")
+    target, shape, dataset_path = reader.target, reader.shape, reader.dataset_path
+    # Resolve before opening any output: absent custom definitions are an explicit setup error.
+    _, nxdl_path = helpers.get_nxdl_root_and_path(target)
+    identity, stamps = _identity(
+        source, target, reader.metadata, compression, nxdl_path
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
     chunks = _chunk_shape(
-        manifest.volume_shape, manifest.dtype, compression.target_chunk_bytes
+        shape,
+        source.dtype,
+        compression.target_chunk_bytes,
+        1 if target == "NXtomoproc" else 0,
     )
+    report = ConversionReport(
+        output,
+        shape,
+        str(source.dtype),
+        chunks,
+        compression.algorithm,
+        compression.level,
+        source.frame_count,
+    )
+    with _exclusive_output_lock(output):
+        if output.exists():
+            if not overwrite:
+                raise FileExistsError(output)
+            with h5py.File(output, "r") as existing:
+                if existing.attrs.get("xrm_input_identity") == identity:
+                    _validate_result(output, shape, target, dataset_path)
+                    return replace(report, reused=True)
+        descriptor, name = tempfile.mkstemp(
+            prefix=f".{output.name}.", suffix=".part", dir=output.parent
+        )
+        os.close(descriptor)
+        temporary = Path(name)
+        try:
+            # Writer removes unresolved links from its input template. Defer
+            # pixel links until their streamed targets have been created.
+            deferred_links = {
+                path: value
+                for path, value in template.items()
+                if isinstance(value, dict) and set(value) == {"link"}
+            }
+            for path in deferred_links:
+                del template[path]
+            Writer(
+                data=template, nxdl_f_path=nxdl_path, output_path=str(temporary)
+            ).write()
+            with h5py.File(temporary, "a") as h:
+                h.attrs["file_name"] = output.name
+                h.attrs["default"] = "entry"
+                h.attrs["xrm_input_identity"] = identity
+                h["entry"].attrs["default"] = (
+                    "image" if target == "NXxrm_image" else "data"
+                )
+                if target == "NXxrm_image":
+                    h["entry/image"].attrs["default"] = "image_2d"
+                else:
+                    h["entry/data"].attrs["signal"] = "data"
+                parent, _, name = dataset_path.rpartition("/")
+                dataset = h[parent].create_dataset(
+                    name,
+                    shape=shape,
+                    dtype=source.dtype,
+                    chunks=chunks,
+                    compression="gzip",
+                    compression_opts=compression.level,
+                    shuffle=compression.shuffle,
+                )
+                dataset.attrs.update(
+                    interpretation="volume" if target == "NXtomoproc" else "image"
+                )
+                dataset.attrs["target"] = dataset_path
+                if target == "NXtomoproc":
+                    dataset.attrs.update(transform="none", offset="0.0", scaling="1.0")
+                    dataset.attrs["depends_on"] = "/entry/sample_frame"
+                digest = hashlib.sha256()
+                written = 0
+                for i, frame in enumerate(source.iter_frames()):
+                    if (
+                        i >= source.frame_count
+                        or frame.shape != source.image_shape
+                        or frame.dtype != source.dtype
+                    ):
+                        raise ValueError("Frame changed after inspection")
+                    digest.update(frame.tobytes(order="C"))
+                    if target == "NXtomoproc":
+                        dataset[:, i, :] = frame.T
+                    elif target == "NXtomo":
+                        dataset[i, :, :] = frame.T
+                    else:
+                        dataset[:, :] = frame
+                    written += 1
+                    if progress:
+                        progress(i + 1, source.frame_count, source.path)
+                if written != source.frame_count:
+                    raise ValueError("Frame iterator ended early")
+                dataset.attrs["source_frames_sha256"] = digest.hexdigest()
+                # Core Writer cannot link a pixel dataset before it exists.
+                # Resolve the same standard link instructions after streaming.
+                for path, instruction in deferred_links.items():
+                    link_path = helpers.convert_data_dict_path_to_hdf5_path(path)
+                    if link_path not in h:
+                        h[link_path] = h[instruction["link"]]
+                for i, block in enumerate(source.auxiliary):
+                    group = h[f"entry/auxiliary_{i}"]
+                    aux_shape = (len(block.streams), *block.shape)
+                    aux = group.create_dataset(
+                        "data",
+                        shape=aux_shape,
+                        dtype=block.dtype,
+                        chunks=_chunk_shape(
+                            aux_shape, block.dtype, compression.target_chunk_bytes
+                        ),
+                        compression="gzip",
+                        compression_opts=compression.level,
+                        shuffle=True,
+                    )
+                    for j, frame in enumerate(source.iter_frames(block)):
+                        aux[j] = frame
+                for filename, size, mtime in stamps:
+                    st = Path(filename).stat()
+                    if (st.st_size, st.st_mtime_ns) != (size, mtime):
+                        raise ValueError(f"Input changed during conversion: {filename}")
+                h.flush()
+            _validate_result(temporary, shape, target, dataset_path)
+            os.replace(temporary, output)
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+    return report
 
-    try:
-        with h5py.File(temporary, "w") as handle:
-            data_group = _write_metadata(handle, template, output_file.name)
-            dataset = data_group.create_dataset(
-                "data",
-                shape=manifest.volume_shape,
-                dtype=manifest.dtype,
-                chunks=chunks,
-                compression=compression.algorithm,
-                compression_opts=compression.level,
-                shuffle=compression.shuffle,
-            )
-            dataset.attrs.update(
-                units="1",
-                transform="none",
-                offset="0.0",
-                scaling="1.0",
-                interpretation="volume",
-            )
-            total = len(manifest.paths)
-            for y_index, (path, layer) in enumerate(
-                zip(manifest.paths, iter_tiff_layers(manifest), strict=True)
-            ):
-                dataset[:, y_index, :] = layer.T
-                if progress is not None:
-                    progress(y_index + 1, total, path)
-            handle.flush()
-        _validate_result(temporary, manifest.volume_shape)
-        os.replace(temporary, output_file)
-    except Exception:
-        if temporary.exists():
-            temporary.unlink()
-        raise
 
-    return ConversionReport(
-        output_path=output_file,
-        shape=manifest.volume_shape,
-        dtype=str(manifest.dtype),
-        chunks=chunks,
-        compression=compression.algorithm,
-        compression_level=compression.level,
-        slices_written=len(manifest.paths),
-        assumptions=reader.metadata.assumptions,
+def convert_tomoproc(metadata_file, tiff_directory, output_file, **kwargs):
+    """Compatibility wrapper; missing required metadata now fails explicitly."""
+    return convert(
+        tiff_directory,
+        output_file,
+        target_definition="NXtomoproc",
+        metadata_file=metadata_file,
+        **kwargs,
     )

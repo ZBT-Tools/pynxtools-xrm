@@ -1,71 +1,76 @@
-"""Command-line interface for local and NOMAD-worker conversions."""
-
-from __future__ import annotations
+"""Local inspection and the same conversion service used in NOMAD workers."""
 
 import argparse
 import json
-import logging
 from pathlib import Path
 
+from pynxtools_xrm.definitions import prepare_definitions
 from pynxtools_xrm.models import CompressionConfig
-from pynxtools_xrm.streaming_writer import convert_tomoproc
-from pynxtools_xrm.tiff_stack import discover_tiff_stack
+from pynxtools_xrm.streaming_writer import convert
+from pynxtools_xrm.tiff_stack import TiffSource, discover_tiff_stack
+from pynxtools_xrm.zeiss import ZeissSource, read_recipe
 
 
-def _parser() -> argparse.ArgumentParser:
+def main(argv=None):
     parser = argparse.ArgumentParser(prog="pynx-xrm")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-    inspect = subparsers.add_parser("inspect", help="inspect TIFF headers only")
-    inspect.add_argument("tiff_directory", type=Path)
-    convert = subparsers.add_parser("convert", help="stream TIFFs into NXtomoproc")
-    convert.add_argument("--metadata", required=True, type=Path)
-    convert.add_argument("--tiffs", required=True, type=Path)
-    convert.add_argument("--output", required=True, type=Path)
-    convert.add_argument("--gzip-level", type=int, default=4)
-    convert.add_argument("--chunk-mib", type=float, default=1.0)
-    convert.add_argument("--overwrite", action="store_true")
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    commands = parser.add_subparsers(dest="command", required=True)
+    inspect = commands.add_parser("inspect")
+    inspect.add_argument("input", type=Path)
+    setup = commands.add_parser("definitions")
+    setup.add_argument("--output", type=Path, required=True)
+    command = commands.add_parser("convert")
+    inputs = command.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--input", type=Path)
+    inputs.add_argument("--tiffs", type=Path)
+    command.add_argument("--metadata", type=Path)
+    command.add_argument("--recipe", action="append", type=Path, default=[])
+    command.add_argument(
+        "--supplements", type=Path, help="JSON object: explicit missing values only"
+    )
+    command.add_argument("--target", choices=["NXtomo", "NXtomoproc", "NXxrm_image"])
+    command.add_argument("--output", required=True, type=Path)
+    command.add_argument("--gzip-level", type=int, default=4)
+    command.add_argument("--chunk-mib", type=float, default=1.0)
+    command.add_argument("--overwrite", action="store_true")
+    args = parser.parse_args(argv)
+    if args.command == "definitions":
+        print(prepare_definitions(args.output))
+        return 0
     if args.command == "inspect":
-        manifest = discover_tiff_stack(args.tiff_directory)
+        if args.input.suffix.casefold() == ".rcp":
+            print(json.dumps(read_recipe(args.input), indent=2))
+            return 0
+        source = (
+            TiffSource(discover_tiff_stack(args.input))
+            if args.input.is_dir()
+            else ZeissSource(args.input)
+        )
         print(
             json.dumps(
                 {
-                    "number_of_slices": len(manifest.paths),
-                    "tiff_shape_z_x": manifest.image_shape,
-                    "nxtomoproc_shape_x_y_z": manifest.volume_shape,
-                    "dtype": str(manifest.dtype),
-                    "first": manifest.paths[0].name,
-                    "last": manifest.paths[-1].name,
+                    "frames": source.frame_count,
+                    "image_shape": source.image_shape,
+                    "dtype": str(source.dtype),
+                    "auxiliary": [b.name for b in source.auxiliary],
                 },
                 indent=2,
             )
         )
         return 0
-
-    last_percent = -1
-
-    def show_progress(current: int, total: int, _path: Path) -> None:
-        nonlocal last_percent
-        percent = current * 100 // total
-        if percent >= last_percent + 5 or current == total:
-            logging.info("TIFF streaming: %d/%d (%d%%)", current, total, percent)
-            last_percent = percent
-
-    report = convert_tomoproc(
-        args.metadata,
-        args.tiffs,
+    report = convert(
+        args.input or args.tiffs,
         args.output,
+        target_definition=args.target,
+        metadata_file=args.metadata,
+        recipe_paths=args.recipe,
+        supplements=json.loads(args.supplements.read_text())
+        if args.supplements
+        else None,
         compression=CompressionConfig(
             level=args.gzip_level,
-            target_chunk_bytes=max(1, round(args.chunk_mib * 1024 * 1024)),
+            target_chunk_bytes=max(1, round(args.chunk_mib * 1024**2)),
         ),
         overwrite=args.overwrite,
-        progress=show_progress,
     )
     print(
         json.dumps(

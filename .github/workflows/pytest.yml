@@ -22,19 +22,18 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install nomad
+      - name: Install released NOMAD compatibility target
         run: |
-          uv pip install nomad-lab[infrastructure]@git+https://gitlab.mpcdf.mpg.de/nomad-lab/nomad-FAIR.git
-      - name: Install package and pynxtools master branch
+          uv pip install "nomad-lab[infrastructure]>=1.4.1"
+      - name: Install package and pinned pynxtools compatibility range
         run: |
           # Editable install is necessary for coveralls to work
           uv pip install -e ".[dev]"
           uv pip install coverage coveralls
-      - name: Install pynxtools master branch
-        run: |
-          uv pip install pynxtools@git+https://github.com/FAIRmat-NFDI/pynxtools
       - name: Test with pytest
         run: |
+          python -m pynxtools_xrm.definitions "$RUNNER_TEMP/xrm-definitions"
+          export NEXUS_DEF_PATH="$RUNNER_TEMP/xrm-definitions"
           coverage run -m pytest -sv --show-capture=no tests
       - name: Submit to coveralls
         continue-on-error: true

@@ -32,7 +32,11 @@ def discover_tiff_stack(directory: str | Path) -> TiffStackManifest:
 
     paths = tuple(
         sorted(
-            (*directory.glob("*.tif"), *directory.glob("*.tiff")),
+            (
+                path
+                for path in directory.iterdir()
+                if path.suffix.casefold() in {".tif", ".tiff"}
+            ),
             key=lambda path: (_slice_index(path), path.name.casefold()),
         )
     )
@@ -56,6 +60,8 @@ def discover_tiff_stack(directory: str | Path) -> TiffStackManifest:
         with Image.open(path) as image:
             if getattr(image, "n_frames", 1) != 1:
                 raise ValueError(f"Multi-page TIFF is not supported: {path}")
+            if len(image.getbands()) != 1:
+                raise ValueError(f"Only grayscale TIFF layers are supported: {path}")
             shape = (image.height, image.width)
             # Mode metadata is sufficient here; np.asarray(image) would decode
             # every layer during what must remain a header-only validation pass.
@@ -82,3 +88,24 @@ def iter_tiff_layers(manifest: TiffStackManifest) -> Iterator[np.ndarray]:
             if layer.shape != manifest.image_shape or layer.dtype != manifest.dtype:
                 raise ValueError(f"TIFF changed after stack inspection: {path}")
             yield np.array(layer, copy=True)
+
+
+class TiffSource:
+    """Adapt an existing validated TIFF manifest to the shared frame contract."""
+
+    kind = ".tiff"
+    auxiliary = ()
+    raw_metadata = {}
+
+    def __init__(self, manifest):
+        self.manifest = manifest
+        self.path = manifest.paths[0].parent.resolve()
+        self.image_shape = manifest.image_shape
+        self.frame_count = len(manifest.paths)
+        self.dtype = manifest.dtype
+        self.values = {}
+
+    def iter_frames(self, block=None):
+        if block is not None:
+            raise ValueError("TIFF stack has no embedded auxiliary images")
+        yield from iter_tiff_layers(self.manifest)

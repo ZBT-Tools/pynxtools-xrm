@@ -1,6 +1,7 @@
 data:
   m_def: pynxtools_xrm.nomad.schema_packages.schema.XRMDataConverter
   metadata_file: 6100_SDP_XRM_576_001.json
+  target_definition: NXtomoproc
   tiff_directory: AvCarb_FLEX_20bar/Bilder 20 bar
   output: AvCarb_FLEX_20bar.nxs
   gzip_level: 4

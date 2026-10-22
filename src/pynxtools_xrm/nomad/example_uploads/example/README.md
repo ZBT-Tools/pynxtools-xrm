@@ -2,7 +2,10 @@
 
 ## Introduction
 
-This example demonstrates how NOMAD can convert, standardize, and store XRM data.
+This example demonstrates the complete bounded-memory XRM conversion. Process
+`xrm.archive.yaml`; it reads the eLabFTW-style `metadata.json` and the numbered
+grayscale TIFFs in `layers/`, writes and validates `xrm_example.nxs`, and adds a
+`nexus_view` link to the generated NeXus archive.
 
 ## Viewing uploaded data
 

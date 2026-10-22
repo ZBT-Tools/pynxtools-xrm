@@ -70,7 +70,11 @@ You can also install the latest _development_ version with
 
 ### How to install `pynxtools-xrm` with NOMAD
 
-To use `pynxtools-xrm` with NOMAD, simply install it in the same environment as the `nomad-lab` package. NOMAD will recognize `pynxtools-xrm` as a plugin automatically. In addition, NOMAD will install a schema for NeXus application definitions.
+Install it in the same environment as `nomad-lab`, prepare the definitions overlay,
+and set `NEXUS_DEF_PATH` to its absolute path before starting the app and workers.
+See [architecture and deployment](../architecture.md) for the commands. Restart
+the processes after installing the new parser entry point. All processes must
+use the same definitions; the package does not modify installed third-party files.
 
 ## Start using `pynxtools-xrm`
 
