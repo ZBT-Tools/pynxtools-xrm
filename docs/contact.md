@@ -6,9 +6,6 @@ You can reach us through different channels. You can send an email directly to o
 
 | Name | E-mail     | Github profiles |
 |------|------------|-----------------|
-| The NOMAD Authors | [j.fortmann@zbt.de](mailto:j.fortmann@zbt.de) |  |
+| Jonas Fortmann| [j.fortmann@zbt.de](mailto:j.fortmann@zbt.de) |  |
 
-Alternatively, you can also:
 
-- Open an issue on [GitHub](https://github.com/FAIRmat-NFDI/pynxtools-xrm/issues)
-- Join the [NOMAD discord channel](https://discord.gg/Gyzx3ukUw8) and ask us there directly.
