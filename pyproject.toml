@@ -6,10 +6,11 @@ build-backend = "setuptools.build_meta"
 name = "pynxtools-xrm"
 dynamic = ["version"]
 authors = [
-    { name = "The NOMAD Authors", email = "j.fortmann@zbt.de" },
+    { name = "Jonas Fortmann", email = "j.fortmann@zbt.de" },
 ]
 description = "Streaming ZEISS XRM/TXRM/TXM and TIFF readers for NeXus and NOMAD"
 readme = "README.md"
+version = "0.1.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 classifiers = [
