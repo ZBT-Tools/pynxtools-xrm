@@ -85,5 +85,4 @@ data:
 
 The geometry values above are a synthetic example, not defaults for measurements.
 Reconstruction program/version/date and source name/type must be supplied by
-genuine metadata. In the inspected AvCarb TXM those process fields and pixel
-orientation are not proven; its conversion therefore fails until supplemented.
+genuine metadata.
