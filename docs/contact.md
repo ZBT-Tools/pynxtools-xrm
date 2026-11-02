@@ -6,6 +6,6 @@ You can reach us through different channels. You can send an email directly to o
 
 | Name | E-mail     | Github profiles |
 |------|------------|-----------------|
-| Jonas Fortmann| [j.fortmann@zbt.de](mailto:j.fortmann@zbt.de) |  |
+| Jonas Fortmann| [j.fortmann@zbt.de](mailto:j.fortmann@zbt.de) | jonasdfortmann |
 
 
