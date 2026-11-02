@@ -10,7 +10,6 @@ authors = [
 ]
 description = "Streaming ZEISS XRM/TXRM/TXM and TIFF readers for NeXus and NOMAD"
 readme = "README.md"
-version = "0.1.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 classifiers = [
