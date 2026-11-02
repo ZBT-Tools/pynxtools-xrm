@@ -40,32 +40,18 @@ That command creates a new virtual environment in a directory called `.venv`.
 
 ## Installation
 
-Install the latest stable version of this package from PyPI with
+Install the latest stable version of this package from GitHub
 
 === "uv"
 
     ```bash
-    uv pip install pynxtools-xrm
+    uv pip install git+https://github.com/ZBT-Tools/pynxtools-xrm
     ```
 
 === "pip"
 
     ```bash
-    pip install pynxtools-xrm
-    ```
-
-You can also install the latest _development_ version with
-
-=== "uv"
-
-    ```bash
-    uv pip install git+https://github.com/FAIRmat-NFDI/pynxtools-xrm.git
-    ```
-
-=== "pip"
-
-    ```bash
-    pip install git+https://github.com/FAIRmat-NFDI/pynxtools-xrm.git
+    pip install git+https://github.com/ZBT-Tools/pynxtools-xrm
     ```
 
 ### How to install `pynxtools-xrm` with NOMAD
