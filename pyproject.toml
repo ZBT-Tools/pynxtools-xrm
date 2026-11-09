@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "pynxtools-xrm"
 dynamic = ["version"]
 authors = [
-    { name = "Jonas Fortmann", email = "j.fortmann@zbt.de" },
+    { name = "Jonas Fortmann", email = "j.formtann@zbt.de" },
 ]
 description = "Streaming ZEISS XRM/TXRM/TXM and TIFF readers for NeXus and NOMAD"
 readme = "README.md"
@@ -58,8 +58,9 @@ nomad = ["nomad-lab[infrastructure]>=1.4.1"]
 
 
 [project.urls]
-"Homepage" = "https://github.com/FAIRmat-NFDI/pynxtools-xrm"
-"Bug Tracker" = "https://github.com/FAIRmat-NFDI/pynxtools-xrm/issues"
+"Homepage" = "https://github.com/jonasdfortmann/pynxtools-xrm"
+"Source" = "https://github.com/jonasdfortmann/pynxtools-xrm"
+"Bug Tracker" = "https://github.com/jonasdfortmann/pynxtools-xrm/issues"
 
 [project.entry-points.'pynxtools.reader']
 xrm = "pynxtools_xrm.reader:XRMReader"

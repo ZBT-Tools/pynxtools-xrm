@@ -1,127 +1,79 @@
-# Development guide
+# Develop and contribute
 
-This tutorial will guide you through on how to set up a working environment for developing `pynxtools-xrm`.
+The plugin is developed at ZBT by Jonas Fortmann. Contributions should preserve
+measurement semantics, document new mappings and include focused validation.
+See [contact](../contact.md) for ownership and upstream attribution.
 
-## What should you know before this tutorial?
+## Development environment
 
-- You should read the [guide on getting started with `pynxtools`](https://fairmat-nfdi.github.io/pynxtools/getting-started.html).
-- You should read the [installation tutorial](installation.md).
-
-## What you will know at the end of this tutorial?
-
-You will know
-
-- how to setup your environment for developing `pynxtools-xrm`
-- how to make changes to the software
-- how to test the software
-- how to contribute on GitHub
-- how to use `pynxtools-xrm` as a NOMAD plugin
-
-## Contributing
-
-??? info "Structure of the `pynxtools-xrm` repository"
-    The software tools are located inside `src/pynxtools_xrm`. They are shipped with unit tests located in `tests`.
-
-### Setup
-
-It is recommended to use python 3.12 with a dedicated virtual environment for this package. Learn how to manage [python versions](https://github.com/pyenv/pyenv) and [virtual environments](https://realpython.com/python-virtual-environments-a-primer/). We recommend using [`uv`](https://github.com/astral-sh/uv), an extremely fast Python package and project manager. In this tutorial, you will find parallel descriptions, using either `uv` or a more classical approach using `venv` and `pip`.
-
-Start by creating a virtual environment:
-
-=== "uv"
-    `uv` is capable of creating a virtual environment and install the required Python version at the same time.
-
-    ```bash
-    uv venv --python 3.12
-    ```
-
-=== "venv"
-
-    Note that you will need to install the Python version manually beforehand.
-
-    ```bash
-    python -m venv .venv
-    ```
-
-That command creates a new virtual environment in a directory called .venv.
-
-### Development installation
-
-We start by cloning the repository:
-
-```console
-git clone https://github.com/FAIRmat-NFDI/pynxtools-xrm.git \\
-    --branch main \\
-    --recursive pynxtools-xrm
+```bash
+git clone https://github.com/jonasdfortmann/pynxtools-xrm.git
 cd pynxtools-xrm
-```
-
-Next, we install the package in editable mode (together with its dependencies):
-
-=== "uv"
-
-    ```bash
-    uv pip install -e ".[dev]"
-    ```
-
-=== "pip"
-
-    Note that you will need to install the Python version manually beforehand.
-
-    ```bash
-    pip install --upgrade pip
-    pip install -e ".[dev]"
-    ```
-
-### Linting and formatting
-
-We are using ruff and mypy for linting, formatting, and type checking. It is recommended to use the [pre-commit hook](https://pre-commit.com/#intro) available for ruff which formats the code and checks the linting before making a Git commit.
-
-Install the precommit by running
-
-```console
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e '.[dev,docs]'
+pynx-xrm definitions --output "$PWD/run/xrm-definitions"
+export NEXUS_DEF_PATH="$PWD/run/xrm-definitions"
 pre-commit install
 ```
 
-from the root of this repository.
+For NOMAD integration use the distribution's development environment and install
+this checkout there; use its NOMAD version pin. The optional `nomad` extra is
+available when NOMAD is not already supplied. Do not import the package before
+setting the definitions path in the Python process under test.
 
-### Testing
+## Source map
 
-There exist unit tests for the software written in [pytest](https://docs.pytest.org/en/stable/) which can be used as follows:
+| File | Responsibility |
+|---|---|
+| `src/pynxtools_xrm/zeiss.py` | ZEISS headers, frame iterator, RCP matching |
+| `src/pynxtools_xrm/tiff_stack.py` | Numbered stack discovery and iteration |
+| `src/pynxtools_xrm/metadata.py`, `elabftw.py` | Resolution, precedence, ELN labels and provenance |
+| `src/pynxtools_xrm/mapping.py`, `geometry.py` | NeXus fields and coordinate transforms |
+| `src/pynxtools_xrm/streaming_writer.py` | Metadata Writer, pixel streaming, validation and atomic output |
+| `src/pynxtools_xrm/definitions.py` | Explicit full definitions overlay |
+| `src/pynxtools_xrm/nomad/jobs.py` | Upload-relative paths and sidecar associations |
+| `src/pynxtools_xrm/nomad/parsers/parser.py` | Binary owner conversion and generated file registration |
+| `src/pynxtools_xrm/nomad/schema_packages/schema.py` | YAML adapter and TIFF jobs |
 
-```console
-pytest -sv tests
+## Validation
+
+Run checks applicable to the changed code:
+
+```bash
+ruff check src tests
+ruff format --check src tests
+pytest tests
 ```
 
-### Editing the documentation
+Some integration tests require NOMAD and suitable data. Review the test's setup
+before interpreting an unavailable integration environment as a plugin failure.
+Add tests for new decoded manufacturer fields, unit handling, ambiguous sidecars,
+orientation and actual output datasets. Do not substitute guessed metadata for
+missing experimental values. Keep one-image-at-a-time pixel memory behavior.
 
-We are using [`mkdocs](https://www.mkdocs.org/) for the documentation. If you edit the documentation, you can build it locally. For this, you need to install an additional set of dependencies:
+## Documentation
 
-=== "uv"
-
-    ```bash
-    uv pip install -e ".[docs]"
-    ```
-
-=== "pip"
-
-    ```bash
-    pip install -e ".[docs]"
-    ```
-You can then serve the documentation locally by running
-
-```console
+```bash
+python -m pip install -e '.[docs]'
+mkdocs build --strict
 mkdocs serve
 ```
 
-### Contributing to the package on GitHub
+Edit Markdown under `docs/` and navigation in `mkdocs.yaml`. Separate tutorials,
+task guides, explanations and reference, following the
+[NOMAD documentation structure](https://docs.nomad-lab.eu/). Keep repository
+metadata in `README.md`, `pyproject.toml`, `CITATION.cff` and `docs/contact.md`
+consistent. Use ZBT/Jonas Fortmann authorship; retain genuine upstream copyright
+notices in derived template code. Do not copy upstream funding or maintenance
+claims into this project's citation metadata.
 
-Once you are happy with the changes, please commit them on a separate branch and create a pull request on GitHub. We run a number of GitHub actions that check the correct linting, run the tests in an isolated environment, and build the documentation. Once these pass and a peer review of the code has occurred, your code will be accepted.
+Every example must state its path base and distinguish synthetic values from
+measurement data. Validate YAML/JSON and check examples against the current
+schema and sidecar behavior. Update supported targets, output paths and failure
+instructions together when implementation changes.
 
-## Developing `pynxtools-xrm` as a NOMAD plugin
-
-If you plan to contribute to the NOMAD plugin functionality of pynxtools-xrm, it often makes sense to use the NOMAD development environment called `nomad-distro-dev`. You can learn more in the [NOMAD documentation](https://nomad-lab.eu/prod/v1/staging/docs/howto/develop/setup.html#nomad-distro-dev-development-environment-for-the-core-nomad-package-and-nomad-plugins).
-
-## Troubleshooting
-
-If you face any issues with the tool or when setting up the development environment, please create a new [Github Issue](https://github.com/FAIRmat-NFDI/pynxtools-xrm/issues/new?template=bug.yaml).
+Submit a focused pull request to the project repository with the problem,
+behavior change and validation. For a mapping extension, explain why the source
+field represents that quantity, including units and format/version limitations.
+Coordinate changes to upstream pynxtools or NOMAD with their own maintainers.

@@ -1,9 +1,29 @@
-# Note on versioning
+# Versions and reproducibility
 
-Keeping track of versions is essential for every software and semantic data modeling activity. We follow [PEP440](https://peps.python.org/pep-0440/) when reporting versions, fetching metadata at run time using [`importlib.metadata`](https://docs.python.org/3/library/importlib.metadata.html). Several versions need to be distinguished. The version of `pynxtools`, the one of the `NeXus definitions`, and those of `h5py` and the `HDF5` library. [See the respective section of the `pynxtools` documentation](https://fairmat-nfdi.github.io/pynxtools/learn/pynxtools/versioning.html) that explains where these versions can be found.
+The distribution version comes from setuptools-scm and Git history at build
+time. Query installed versions in the actual worker environment:
 
-## `pynxtools-plugin` version
+```bash
+python -c 'from importlib.metadata import version; print("pynxtools-xrm", version("pynxtools-xrm")); print("pynxtools", version("pynxtools")); print("nomad-lab", version("nomad-lab"))'
+```
 
-We consider it best practice that also each plugin of `pynxtools` writes its version as a `programID` instance of [`NXprogram`](https://github.com/FAIRmat-NFDI/nexus_definitions/blob/fairmat/base_classes/NXprogram.nxdl.xml). `ID` serves as a placeholder that can be either omitted or replaced by an integer if multiple programs need to be distinguished. Counting should start at one, i.e., `program` or `program1` are preferred options.
-Specifically, the field `program` inside the `programID` instance should store the distribution (package) name. The attribute `program/@version` should store a version string following [PEP440](https://peps.python.org/pep-0440/).
+The NOMAD query requires NOMAD to be installed; standalone conversion does not.
+Record the Git revision for editable installations as well as the reported
+version. Do not infer the deployed worker revision from a local checkout.
 
+The converter records its package name, version and actual conversion time in
+`/entry/conversion` (`NXprocess`). The reconstruction software/version/date in
+`/entry/reconstruction` describe the experimental processing and are independent
+of the converter's version/time. A TXM file's `exeVersion` is retained as source
+metadata rather than silently substituted for either quantity.
+
+The overlay marker `xrm-overlay.json` records the base-definition revision and
+`NXxrm_image` checksum. Keep it with the deployment configuration. Rebuild a fresh
+overlay when upgrading the base definitions and switch app/workers together.
+See [deployment](../howto/oasis-deployment.md#definition-files-and-upgrades).
+
+For reproducibility retain original files, RCP, uploaded JSON, configuration,
+package/image revision, definitions and generated NeXus. Output reuse considers
+source file stamps, metadata and implementation fingerprint; see
+[outputs](../reference/outputs.md). It does not establish that a source file was
+unchanged if external software modified bytes while preserving size and mtime.

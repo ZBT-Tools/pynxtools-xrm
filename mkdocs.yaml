@@ -1,21 +1,29 @@
-site_name: Documentation for pynxtools-xrm
-site_description: |
-  The documentation for the pynxtools-xrm plugin.
-site_author: The NOMAD Authors
-repo_url: https://github.com/FAIRmat-NFDI/pynxtools-xrm
+site_name: pynxtools-xrm — ZBT
+site_description: Streaming ZEISS XRM conversion to NeXus and deployment in NOMAD Oasis.
+site_author: Jonas Fortmann, ZBT – Zentrum für BrennstoffzellenTechnik GmbH
+repo_url: https://github.com/jonasdfortmann/pynxtools-xrm
 edit_uri: ""
 
 nav:
   - Home: index.md
   - Tutorials:
-    - tutorial/installation.md
-    - tutorial/contributing.md
-  - Learning:
-    - architecture.md
-    - metadata-mapping.md
-    - learn/versioning.md
-  - Troubleshooting:
-    - Windows ZIP upload lock: troubleshooting-windows-zip-upload.md
+      - Installation: tutorial/installation.md
+      - Development: tutorial/contributing.md
+  - How-to guides:
+      - Deploy on NOMAD Oasis: howto/oasis-deployment.md
+      - Structure an upload: howto/nomad-upload.md
+      - Supply additional metadata: howto/additional-metadata.md
+      - Troubleshoot conversion: howto/troubleshooting.md
+      - Windows ZIP import: troubleshooting-windows-zip-upload.md
+  - Explanation:
+      - Architecture: architecture.md
+      - Versions and reproducibility: learn/versioning.md
+  - Reference:
+      - Configuration and CLI: reference/configuration.md
+      - Metadata mapping: metadata-mapping.md
+      - Outputs: reference/outputs.md
+      - Synthetic example: reference/example-upload.md
+  - Contact and citation: contact.md
 
 plugins:
   - search
@@ -27,17 +35,14 @@ theme:
     accent: '#008A67'
   font:
     text: 'Titillium Web'
-  logo: assets/nomad-plugin-logo.png
-  favicon: assets/favicon.png
+  icon:
+    logo: material/microscope
+    repo: fontawesome/brands/github
   features:
     - navigation.instant
     - navigation.footer
     - content.code.copy
-    - content.code.annotate
     - search.suggest
-  custom_dir: docs/theme
-  icon:
-    repo: fontawesome/brands/github
 
 markdown_extensions:
   - attr_list
@@ -47,30 +52,14 @@ markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
   - toc:
-      permalink: True
-  - pymdownx.arithmatex:
-      generic: true
-  - pymdownx.emoji
-  - mkdocs-click
+      permalink: true
   - pymdownx.extra
-  - pymdownx.tabbed:
-      alternate_style: true
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.superfences
 
 extra:
   generator: false
 
 use_directory_urls: false
-
 extra_css:
   - stylesheets/extra.css
-
-extra_javascript:
-  - javascript.js
-  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js

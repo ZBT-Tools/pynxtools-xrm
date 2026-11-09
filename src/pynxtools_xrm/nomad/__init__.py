@@ -1,7 +1,9 @@
 #
-# Copyright The NOMAD Authors.
+# Copyright ZBT – Zentrum für BrennstoffzellenTechnik GmbH; Jonas Fortmann.
+# Upstream/template portions: Copyright The NOMAD Authors.
 #
-# This file is part of NOMAD. See https://nomad-lab.eu for further info.
+# This file is part of the ZBT pynxtools-xrm plugin.
+# Contact: Jonas Fortmann <j.formtann@zbt.de>.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

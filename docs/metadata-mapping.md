@@ -1,5 +1,9 @@
 # Metadata mapping and strict validation
 
+For concrete YAML/JSON examples, units, timestamps and file assignments see
+[additional metadata](howto/additional-metadata.md). This reference describes
+the current implemented mapping, not all fields that a manufacturer file may contain.
+
 Effective precedence is image > associated RCP > eLabFTW > explicit missing values.
 Conflicting lower-priority values remain in provenance. Explicit configuration
 cannot change an existing value. Invalid high-priority metadata are not replaced.
@@ -15,7 +19,7 @@ entry/recipe/data (JSON with raw_streams_base64).
 | Rotation angle array / image_key | yes | no | no | measured Angles; primary TXRM projections key=0 |
 | Cubic object pixel/voxel size | optional | yes | yes | ImageInfo/PixelSize (um) |
 | Source name / type | optional | yes | optional | explicit proven source; numeric SourceType not decoded |
-| Reconstruction program/version/date | no | yes | no | missing in inspected TXM; no exeVersion/date fallback |
+| Reconstruction program/version/date | no | yes | no | ELN/config; TXM exeVersion retained separately, no layer-date fallback |
 | Raw acquisition file | no | yes | no | ReconSettings/InputFileName or assigned RCP |
 | Physical image orientation | local axes | yes | local axes | explicit calibrated row/column axes and signs |
 | Volume origin | no | TIFF required | no | explicit TIFF origin; measured TXM Y plus local X/Z offsets |
@@ -61,3 +65,14 @@ Lower-priority conflicting values and selected field origins are native datasets
 The single-image profile is a local application named NXxrm_image using generic
 NXimage and NXdata; it does not mislabel X-ray microscopy as electron microscopy
 through NXem. Its NXDL is packaged and added to an explicit definitions overlay.
+
+## Source-reader limitations
+
+RCP decoding currently contributes SampleName and the acquisition reference
+(AcqFileName for NXtomoproc); other recipe streams are preserved but not
+automatically mapped into missing reconstruction/source fields. The eLabFTW
+resolver requires exact labels such as Source name, Source type, Reconstruction
+software, Software version and Reconstruction date under
+`metadata_decoded.extra_fields`. It does not query a live laboratory notebook.
+Orientation is read from explicit configuration. These implementation limits
+are distinct from fields being absent in the original data.

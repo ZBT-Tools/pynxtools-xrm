@@ -2,5 +2,5 @@ prune *
 exclude *
 recursive-include src/pynxtools_xrm *.py
 recursive-include src/pynxtools_xrm/definitions *.nxdl.xml
-include pyproject.toml README.md
+include pyproject.toml README.md LICENSE CITATION.cff
 graft src/pynxtools_xrm/nomad/example_uploads

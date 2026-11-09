@@ -1,5 +1,9 @@
 # Windows: ZIP upload requires a second processing run
 
+This is a historical development incident tied to the NOMAD revision cited
+below. Check your installed NOMAD version before assuming the same core defect.
+For current plugin setup failures see [conversion troubleshooting](howto/troubleshooting.md).
+
 ## Summary
 
 On a locally hosted NOMAD Oasis running on Windows, an uploaded ZIP archive can
@@ -164,8 +168,8 @@ archive.m_context.process_updated_raw_file(self.output, allow_modify=True)
 
 References:
 
-- [`XRMDataConverter.normalize()`](../src/pynxtools_xrm/nomad/schema_packages/schema.py)
-- [`convert_tomoproc()`](../src/pynxtools_xrm/streaming_writer.py)
+- `XRMDataConverter.normalize()` (`src/pynxtools_xrm/nomad/schema_packages/schema.py` in the checkout)
+- `convert_tomoproc()` (`src/pynxtools_xrm/streaming_writer.py` in the checkout)
 
 The recorded failing Temporal activity was `update_files_activity`, and its
 traceback ended in `StagingUploadFiles.add_rawfiles()` while deleting the

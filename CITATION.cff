@@ -1,26 +1,19 @@
 cff-version: 1.2.0
-title: 'pynxtools-xrm'
-version: 0.1.0
-message:
-  If you use this software, please cite it using the
-  metadata from this file.
+title: pynxtools-xrm
+message: Cite this software and record the package version or Git commit used.
 type: software
 authors:
-  - given-names:
-    family-names:
-repository-code: 'https://github.com/FAIRmat-NFDI/pynxtools-xrm'
+  - given-names: Jonas
+    family-names: Fortmann
+    affiliation: ZBT – Zentrum für BrennstoffzellenTechnik GmbH
+    email: j.formtann@zbt.de
+repository-code: https://github.com/jonasdfortmann/pynxtools-xrm
 keywords:
+  - X-ray microscopy
   - NeXus
   - pynxtools
-  - NOMAD
-abstract:
-  pynxtools-xrm is a reader plugin for pynxtools (https://github.com/FAIRmat-NFDI/pynxtools) written in Python.
-
-  The work is funded by the Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) - 460197019 (FAIRmat)
-  (https://gepris.dfg.de/gepris/projekt/460197019?language=en).
+  - NOMAD Oasis
+abstract: >-
+  Streaming ZEISS TXRM, TXM, XRM and numbered TIFF conversion to NeXus,
+  with NOMAD integration. Developed at ZBT by Jonas Fortmann.
 license: Apache-2.0
-funding:
-  - name: Deutsche Forschungsgemeinschaft
-    award-number: 460197019
-    title: FAIRmat - FAIR Data Infrastructure for Condensed-Matter Physics and the Chemical Physics of Solids
-    award-uri: https://gepris.dfg.de/gepris/projekt/460197019?language=en

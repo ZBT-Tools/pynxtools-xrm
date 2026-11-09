@@ -1,67 +1,69 @@
-# Installation guide
+# Install pynxtools-xrm
 
-## What should you know before this tutorial?
+This tutorial installs the converter into an isolated Python environment and
+checks its NeXus definitions. For NOMAD 2.0.0 Oasis deployment, continue with the
+[server guide](../howto/oasis-deployment.md); a local installation does not install
+the plugin into a remote worker.
 
-To get started, it does not hurt to read the following `pynxtools` tutorial:
+## Requirements
 
-- [Guide on getting started with `pynxtools`, NeXus, and NOMAD](https://fairmat-nfdi.github.io/pynxtools/getting-started.html)
-- [Installation tutorial for `pynxtools`](https://fairmat-nfdi.github.io/pynxtools/tutorial/installation.html)
+- Python >=3.10; the examples use Python 3.12.
+- `pynxtools>=0.15.2,<0.16`, installed by the package dependency resolver.
+- Disk space for the input and compressed output, including a temporary new
+  output alongside an existing result during replacement.
+- For NOMAD: the plugin and the configured pynxtools NeXus parser in the app and
+  worker environments. The package declares a NOMAD extra, but its dependency
+  lower bound is not a compatibility guarantee for all NOMAD releases.
 
-## What you will know at the end of this tutorial?
+## Install from the repository
 
-You will know
+Use the ZBT developer's repository. Pin a reviewed tag or commit for deployment;
+do not assume the moving default branch is a stable release.
 
-- how to install `pynxtools-xrm`
-- how to install `pynxtools-xrm` together with NOMAD
+```bash
+git clone https://github.com/jonasdfortmann/pynxtools-xrm.git
+cd pynxtools-xrm
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+```
 
-## Setup
+On Windows, activate with `.venv\Scripts\Activate.ps1` in PowerShell. If NOMAD is
+not already provided by your development environment, install the optional extra
+with `python -m pip install -e '.[nomad]'`. An existing Oasis should retain its
+distribution's pinned NOMAD version; build and test the plugin into that image.
 
-It is recommended to use python 3.12 with a dedicated virtual environment for this package. Learn how to manage [python versions](https://github.com/pyenv/pyenv) and [virtual environments](https://realpython.com/python-virtual-environments-a-primer/).
+## Prepare NeXus definitions
 
-There are many alternatives to managing virtual environments and package dependencies (requirements). We recommend using [`uv`](https://github.com/astral-sh/uv), an extremely fast Python package and project manager. In this tutorial, you will find parallel descriptions, using either `uv` or a more classical approach using `venv` and `pip`.
+The plugin ships `NXxrm_image`, but pynxtools does not automatically discover the
+plugin's private XML directory. Prepare a separate **complete** definitions tree:
 
-Start by creating a virtual environment:
+```bash
+pynx-xrm definitions --output "$PWD/run/xrm-definitions"
+export NEXUS_DEF_PATH="$PWD/run/xrm-definitions"
+```
 
-=== "uv"
-    `uv` is capable of creating a virtual environment and install the required Python version at the same time.
+PowerShell equivalent:
 
-    ```bash
-    uv venv --python 3.12
-    ```
+```powershell
+pynx-xrm definitions --output run/xrm-definitions
+$env:NEXUS_DEF_PATH = (Resolve-Path run/xrm-definitions).Path
+```
 
-=== "venv"
+The output includes base classes, standard applications and the local
+`applications/NXxrm_image.nxdl.xml`. Set the variable before imports. Restart
+already running Python sessions after changing it. See the
+[definition lifecycle](../howto/oasis-deployment.md#definition-files-and-upgrades)
+for upgrades and the inactive `NXxrm_tomoproc` extension.
 
-    Note that you will need to install the Python version manually beforehand.
+## Verify the environment
 
-    ```bash
-    python -m venv .venv
-    ```
-That command creates a new virtual environment in a directory called `.venv`.
+```bash
+python -c 'from importlib.metadata import version; print(version("pynxtools-xrm")); print(version("pynxtools"))'
+python -c 'from pynxtools.nexus.utils import get_nxdl_root_and_path; print(get_nxdl_root_and_path("NXxrm_image")[1]); print(get_nxdl_root_and_path("NXtomoproc")[1])'
+pynx-xrm --help
+```
 
-## Installation
-
-Install the latest stable version of this package from GitHub
-
-=== "uv"
-
-    ```bash
-    uv pip install git+https://github.com/ZBT-Tools/pynxtools-xrm
-    ```
-
-=== "pip"
-
-    ```bash
-    pip install git+https://github.com/ZBT-Tools/pynxtools-xrm
-    ```
-
-### How to install `pynxtools-xrm` with NOMAD
-
-Install it in the same environment as `nomad-lab`, prepare the definitions overlay,
-and set `NEXUS_DEF_PATH` to its absolute path before starting the app and workers.
-See [architecture and deployment](../architecture.md) for the commands. Restart
-the processes after installing the new parser entry point. All processes must
-use the same definitions; the package does not modify installed third-party files.
-
-## Start using `pynxtools-xrm`
-
-That's it! You can now use `pynxtools-xrm`!
+Both XML lookups should resolve into the chosen overlay. This validates lookup,
+not a complete measurement. Next use genuine data or the bundled synthetic
+example, following [the upload guide](../howto/nomad-upload.md).

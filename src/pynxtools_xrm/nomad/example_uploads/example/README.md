@@ -1,19 +1,24 @@
-# XRM example
+# Synthetic ZBT XRM conversion example
 
-## Introduction
+Developed at ZBT – Zentrum für BrennstoffzellenTechnik GmbH by Jonas Fortmann
+([j.formtann@zbt.de](mailto:j.formtann@zbt.de)).
 
-This example demonstrates the complete bounded-memory XRM conversion. Process
-`xrm.archive.yaml`; it reads the eLabFTW-style `metadata.json` and the numbered
-grayscale TIFFs in `layers/`, writes and validates `xrm_example.nxs`, and adds a
-`nexus_view` link to the generated NeXus archive.
+This miniature example demonstrates the reconstructed TIFF path. All values
+are synthetic and do not describe a real experiment.
 
-## Viewing uploaded data
+Upload this directory's **contents**, keeping `layers/` intact, so that
+`xrm.archive.yaml`, `metadata.json` and `layers/` are at the upload root.
+Process `xrm.archive.yaml`: it assigns `metadata.json`, reads the numbered
+grayscale slices in `layers/`, writes `xrm_example.nxs` and requests processing
+of the generated NeXus entry. All YAML paths are relative to the upload root.
 
-Below, you find an overview of your uploaded data.
-Click on the `> /` button to get a list of your files or select **FILES** from the top menu of this upload.
+The server needs this plugin, its pynxtools dependency, an enabled NeXus parser
+and a prepared definitions overlay exposed to app and workers through
+`NEXUS_DEF_PATH` before startup. Use the package's Oasis deployment guide.
 
-## Where to go from here?
+Check both the YAML entry and `xrm_example.nxs` entry for success. Changed metadata
+require reprocessing the upload. Real TXM/TXRM/XRM images use a binary parser;
+configure them with `input_file`, not this example's `tiff_directory`.
 
-If you're interested in using this pipeline and NOMAD in general you'll find support at [FAIRmat](https://www.fairmat-nfdi.eu/fairmat/).
-
-For questions regarding the experiment or this specific example [contact the developers](https://fairmat-nfdi.github.io/pynxtools-xrm/contact.html) of this example upload.
+Source, documentation and issues:
+<https://github.com/jonasdfortmann/pynxtools-xrm>.

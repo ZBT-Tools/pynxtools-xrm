@@ -1,5 +1,9 @@
 # Architecture and operation
 
+Developed at ZBT by Jonas Fortmann. For operational steps use the
+[deployment guide](howto/oasis-deployment.md), [upload guide](howto/nomad-upload.md)
+and [output reference](reference/outputs.md).
+
 All conversion entry points call streaming_writer.convert. XRMReader remains a
 pynxtools MultiFormatReader; format inspection and metadata mapping are separate
 from the pixel phase. ZeissSource reads the OLE directory and small header streams,
@@ -86,3 +90,9 @@ data:
 The geometry values above are a synthetic example, not defaults for measurements.
 Reconstruction program/version/date and source name/type must be supplied by
 genuine metadata.
+
+## Definition scope
+
+The active targets are NXtomo, NXtomoproc and NXxrm_image. The optional packaged
+NXxrm_tomoproc extension is not an enabled target and is not copied into the
+overlay. See [definition setup](howto/oasis-deployment.md#definition-files-and-upgrades).
