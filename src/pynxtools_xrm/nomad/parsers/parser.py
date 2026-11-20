@@ -5,8 +5,9 @@ from pathlib import Path
 import olefile
 from nomad.parsing import MatchingParser
 
+from pynxtools_xrm.errors import MissingRequiredMetadata
 from pynxtools_xrm.models import CompressionConfig
-from pynxtools_xrm.nomad.jobs import discover_sidecars, find_config, output_relative
+from pynxtools_xrm.nomad.jobs import find_config, output_relative
 from pynxtools_xrm.streaming_writer import convert
 
 
@@ -36,7 +37,6 @@ class XRMRawParser(MatchingParser):
         source = Path(mainfile).resolve()
         root = Path(archive.m_context.raw_path()).resolve()
         config = find_config(source, root)
-        metadata, recipes = discover_sidecars(source, root, config)
         output = config.get("output") or output_relative(source, root)
         output_path = (root / output).resolve()
         if not output_path.is_relative_to(root):
@@ -45,21 +45,23 @@ class XRMRawParser(MatchingParser):
             input_file=source.relative_to(root).as_posix(), output=output, export=False
         )
         archive.data = section
-        report = convert(
-            source,
-            output_path,
-            metadata_file=metadata,
-            recipe_paths=recipes,
-            supplements=config.get("metadata_supplements"),
-            target_definition=config.get("target_definition"),
-            compression=CompressionConfig(
-                level=int(config.get("gzip_level", 4)),
-                target_chunk_bytes=round(
-                    float(config.get("target_chunk_mib", 1.0)) * 1024**2
+        try:
+            report = convert(
+                source,
+                output_path,
+                compression=CompressionConfig(
+                    level=int(config.get("gzip_level", 4)),
+                    target_chunk_bytes=round(
+                        float(config.get("target_chunk_mib", 1.0)) * 1024**2
+                    ),
                 ),
-            ),
-            overwrite=True,
-        )
+                overwrite=True,
+            )
+        except MissingRequiredMetadata as exc:
+            section.conversion_status = str(exc)
+            if logger is not None:
+                logger.error(str(exc))
+            return
         if not report.reused:
             archive.m_context.process_updated_raw_file(output, allow_modify=True)
         section.nexus_view = f"../upload/archive/mainfile/{output}#/data"

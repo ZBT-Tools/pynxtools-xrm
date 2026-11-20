@@ -13,8 +13,8 @@ projects and retain their own authorship.
 2. For a server, complete [Oasis deployment](howto/oasis-deployment.md), including
    definition preparation and environment variables for all workers.
 3. Follow [the upload guide](howto/nomad-upload.md) to preserve directory structure
-   and make image-to-metadata associations unambiguous.
-4. Supply genuine missing values using [additional metadata](howto/additional-metadata.md).
+   or process each ZEISS image individually.
+4. For TIFF stacks, supply missing values using [additional metadata](howto/additional-metadata.md).
 5. Check each image and generated NeXus entry; a completed upload does not imply
    that every entry succeeded. See [troubleshooting](howto/troubleshooting.md).
 
@@ -24,12 +24,10 @@ projects and retain their own authorship.
 |---|---|---|
 | TXRM projections | `NXtomo` | Automatic ZEISS binary parser |
 | TXM reconstruction | `NXtomoproc` | Automatic ZEISS binary parser |
-| Single-image XRM | Local `NXxrm_image` | Automatic ZEISS binary parser |
+| Single-image XRM | NeXus base classes | Automatic ZEISS binary parser |
 | Numbered grayscale TIFF stack | `NXtomoproc` or `NXtomo` | YAML job or CLI |
 
-Each binary image owns one output. RCP files provide associated recipe metadata;
-they do not independently produce converted image entries. The local
-`NXxrm_tomoproc` XML is not an active conversion target in this implementation.
+Each binary image owns one output sourced from its embedded metadata.
 
 ## Documentation map
 

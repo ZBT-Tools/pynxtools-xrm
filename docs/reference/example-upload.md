@@ -25,4 +25,4 @@ the YAML. Process the YAML and inspect both its result and the generated NeXus
 entry. The [configuration reference](configuration.md) explains these fields.
 
 The example validates the reconstruction pipeline; separately test a real
-single-image XRM to verify `NXxrm_image` lookup and the installed NeXus parser.
+single-image XRM to verify base-class import with the installed NeXus parser.

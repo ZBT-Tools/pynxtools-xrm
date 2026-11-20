@@ -1,6 +1,5 @@
 """Upload-scoped associations shared by the binary parser and YAML adapter."""
 
-import json
 from pathlib import Path
 
 import yaml
@@ -44,46 +43,3 @@ def find_config(source, root):
             "Multiple YAML jobs refer to the same binary input"
         )
     return matches[0] if matches else {}
-
-
-def discover_sidecars(source, root, config):
-    """Nearest metadata scope only; an ambiguous scope is never guessed."""
-    if config.get("metadata_file"):
-        metadata = safe_raw_path(root, config["metadata_file"])
-    else:
-        metadata = None
-        for parent in [source.parent, *source.parent.parents]:
-            if not parent.is_relative_to(Path(root).resolve()):
-                break
-            candidates = []
-            for path in parent.iterdir():
-                if path.suffix.casefold() != ".json" or not path.is_file():
-                    continue
-                try:
-                    data = json.loads(path.read_text(encoding="utf-8"))
-                except (ValueError, UnicodeError):
-                    continue
-                if isinstance(data, dict) and "metadata_decoded" in data:
-                    candidates.append(path)
-            if len(candidates) > 1:
-                raise AmbiguousMetadataAssociation(
-                    f"Multiple eLabFTW files in {parent}; assign metadata_file explicitly"
-                )
-            if candidates:
-                metadata = candidates[0]
-                break
-    if config.get("recipe_file"):
-        recipes = [safe_raw_path(root, config["recipe_file"])]
-    else:
-        recipes = []
-        for parent in [source.parent, *source.parent.parents]:
-            if not parent.is_relative_to(Path(root).resolve()):
-                break
-            recipes = [
-                p
-                for p in parent.iterdir()
-                if p.suffix.casefold() == ".rcp" and p.is_file()
-            ]
-            if recipes:
-                break
-    return metadata, recipes

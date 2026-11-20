@@ -44,11 +44,15 @@ overwrite through its conversion adapter.
 |---|---|---|
 | `NXtomo` | `/entry/instrument/detector/data` (linked as `/entry/data/data`) | projection, column, row |
 | `NXtomoproc` | `/entry/data/data` | x, y-layer, z |
-| `NXxrm_image` | `/entry/instrument/detector/data` (linked as `/entry/image/image_2d/intensity`) | row, column |
+| XRM base classes | `/entry/instrument/detector/data` (linked as `/entry/data/data`) | row, column |
 
 Projection frames and reconstruction slices are transposed during streaming
 to the documented target order. XRM retains its row/column image layout.
-Physical axes, geometry and metadata accompany the pixels. These internal HDF5
+Known axes and device metadata accompany the pixels. The original non-image
+OLE streams are stored in `/entry/zeiss_metadata` (`NXcollection`). For each
+`stream_paths[i]`, the original payload is `stream_bytes[stream_offsets[i]:stream_offsets[i+1]]`.
+Auxiliary image groups retain their original pixel types and OLE stream paths.
+These internal HDF5
 paths are not upload filenames and must not be used as YAML `output` paths.
 
 ## NOMAD entries, status and reuse
@@ -68,6 +72,6 @@ configuration changed, explicitly reprocess that generated entry as well.
 Writes use gzip compression, an exclusive output lock, a temporary `.part` file
 and atomic replacement after validation. Failed conversion preserves an older
 valid output, so file existence alone does not prove the latest run succeeded.
-Reuse checks source path/size/mtime, effective metadata, recipe, compression,
-application NXDL and implementation fingerprint. It does not reread the complete
+Reuse checks source path/size/mtime, TIFF metadata where applicable, compression,
+application NXDL where applicable and implementation fingerprint. It does not reread the complete
 input pixel content for cache lookup. The pixel checksum is computed while writing.

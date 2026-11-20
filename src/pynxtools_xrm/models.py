@@ -2,10 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+
+
+@dataclass(frozen=True)
+class ImageLayout:
+    """Storage order and metadata for one NeXus image or stack."""
+
+    definition: str | None
+    shape: tuple[int, ...]
+    path: str
+    frame_axis: int | None
+    attributes: dict[str, str]
+    links: dict[str, str] = field(default_factory=dict)
+    write_metadata: Callable | None = None
 
 
 @dataclass(frozen=True)

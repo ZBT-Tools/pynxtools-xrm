@@ -10,13 +10,10 @@ import base64
 import re
 import struct
 from dataclasses import dataclass
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 import numpy as np
 import olefile
-
-from pynxtools_xrm.errors import AmbiguousMetadataAssociation
-from pynxtools_xrm.geometry import berlin_timestamp
 
 DTYPES = {5: np.dtype("<u2"), 10: np.dtype("<f4")}
 IMAGE_STREAM = re.compile(r"(?:^|/)(?:ImageData\d+/Image\d+|Image\d*)$", re.I)
@@ -34,7 +31,13 @@ def _scalar(ole, path, fmt):
 def _text(ole, path):
     if not ole.exists(path):
         return None
-    return ole.openstream(path).read().split(b"\0", 1)[0].decode("cp1252")
+    return (
+        ole.openstream(path)
+        .read()
+        .split(b"\0", 1)[0]
+        .decode("cp1252", errors="replace")
+        .strip()
+    )
 
 
 def _array(ole, path, dtype="<f4"):
@@ -49,7 +52,7 @@ def _array(ole, path, dtype="<f4"):
 def metadata_streams(ole, excluded):
     """Keep every non-pixel stream, including unrecognized manufacturer fields."""
     return {
-        "/".join(p): base64.b64encode(ole.openstream(p).read()).decode("ascii")
+        "/".join(p): ole.openstream(p).read()
         for p in ole.listdir()
         if "/".join(p) not in excluded
     }
@@ -85,11 +88,12 @@ class ZeissSource:
                 raise ValueError("XRM single-image file contains multiple frames")
             self.frame_count, self.image_shape, self.dtype = n, (h, w), DTYPES[code]
             streams = tuple(f"ImageData{i // 100 + 1}/Image{i + 1}" for i in range(n))
+            primary_streams = set(streams)
             self.primary = ImageBlock("primary", streams, (h, w), self.dtype)
             blocks = {}
             for parts in ole.listdir():
                 key = "/".join(parts)
-                if not IMAGE_STREAM.search(key) or key in streams:
+                if not IMAGE_STREAM.search(key) or key in primary_streams:
                     continue
                 prefix = key.split("/", 1)[0]
                 blocks.setdefault(prefix, []).append(key)
@@ -125,65 +129,78 @@ class ZeissSource:
     def _read_values(self, ole):
         mapping = {
             "pixel_size_um": "PixelSize",
-            "theta": "Angles",
-            "exposure_s": "ExpTimes",
-            "stage_x_um": "XPosition",
-            "stage_y_um": "YPosition",
-            "stage_z_um": "ZPosition",
-            "source_voltage_kv": "XrayVoltage",
-            "source_current_ua": "XrayCurrent",
-            "source_x_mm": "StoRADistance",
-            "detector_x_mm": "DtoRADistance",
             "camera_pixel_size_um": "CamPixelSize",
             "optical_magnification": "OpticalMagnification",
         }
+        if self.kind == ".txm":
+            mapping["slice_y_um"] = "YPosition"
+        else:
+            mapping.update(
+                theta="Angles",
+                exposure_s="ExpTimes",
+                stage_x_um="XPosition",
+                stage_y_um="YPosition",
+                stage_z_um="ZPosition",
+                source_voltage_kv="XrayVoltage",
+                source_current_ua="XrayCurrent",
+                source_x_mm="StoRADistance",
+                detector_x_mm="DtoRADistance",
+            )
         for name, field in mapping.items():
-            # Reconstructed files do not use the signed mm convention of
-            # acquisition ImageInfo distances. Read their reconstruction
-            # parameters explicitly below instead of interpreting by basename.
-            if self.kind == ".txm" and name in {"source_x_mm", "detector_x_mm"}:
-                continue
             a = _array(ole, "ImageInfo/" + field)
-            if a is not None:
-                if a.size not in {1, self.frame_count} or not np.all(np.isfinite(a)):
-                    raise ValueError(f"Invalid per-frame metadata: ImageInfo/{field}")
+            if (
+                a is not None
+                and a.size in {1, self.frame_count}
+                and np.all(np.isfinite(a))
+            ):
                 self.values[name] = a.item() if a.size == 1 else a
         for name, stream in {
-            "raw_file": "ReconSettings/InputFileName",
             "camera_name": "ImageInfo/CameraName",
             "camera_serial": "ImageInfo/CameraSerialNumberString",
             "objective": "ImageInfo/ObjectiveName",
             "filter": "ImageInfo/SourceFilterName",
-            "file_software_version": "exeVersion",
+            "acquisition_mode": "AcquisitionSettings/AcqModeString",
         }.items():
             value = _text(ole, stream)
             if value:
                 self.values[name] = value
-        if ole.exists("ImageInfo/Date"):
-            raw = ole.openstream("ImageInfo/Date").read()
-            if len(raw) != 40 * self.frame_count:
-                raise ValueError("Invalid ZEISS Date record count")
-            self.values["frame_times"] = [
-                berlin_timestamp(raw[i : i + 40].split(b"\0", 1)[0].decode("ascii"))
-                for i in range(0, len(raw), 40)
+        status = _text(ole, "AcquisitionSettings/StatusString") or ""
+        names = {
+            line.strip()
+            for line in re.findall(r"(?im)^[ \t]*sample:[ \t]*([^\r\n]+)", status)
+        } - {""}
+        if len(names) == 1:
+            self.values["sample_name"] = names.pop()
+        dates = self.raw_metadata.get("ImageInfo/Date", b"")
+        if len(dates) == 40 * self.frame_count:
+            records = [
+                dates[i : i + 40].partition(b"\0")[0] for i in range(0, len(dates), 40)
             ]
-        if self.kind == ".txm":
-            for field, name, sign in (
-                ("StoRADistance", "source_x_mm", -1),
-                ("DtoRADistance", "detector_x_mm", 1),
+            if all(
+                re.fullmatch(
+                    rb"\d{1,2}/\d{1,2}/\d{4} \d{2}:\d{2}:\d{2}(?:\.\d+)?", record
+                )
+                for record in records
             ):
-                distance = _scalar(ole, "ReconInputTomoParams/" + field, "<f")
-                if distance is not None:
-                    if not np.isfinite(distance) or distance <= 0:
-                        raise ValueError(f"Invalid reconstructed distance: {field}")
-                    # Positive distance magnitudes in um, placed on the
-                    # user-confirmed global beam axis (source -X, detector +X).
-                    self.values[name] = sign * distance / 1000.0
-            for axis in "XYZ":
-                mean = _scalar(ole, "ReconInputTomoParams/MeanSample" + axis, "<f")
-                if mean is not None:
-                    self.values["stage_" + axis.lower() + "_um"] = mean
-            self.values["slice_y_um"] = _array(ole, "ImageInfo/YPosition")
+                self.values["recorded_times"] = [
+                    record.decode("ascii") for record in records
+                ]
+        if self.raw_metadata.get("ImageInfo/XrayPresent") == b"\x01":
+            self.values["probe"] = "x-ray"
+            index = _scalar(ole, "ImageInfo/SrcAssemblyIndex", "<i")
+            if index is not None and index >= 0:
+                config = f"ConfigureBackup/ConfigSources/Source {index + 1}"
+                name = _text(ole, f"{config}/SourceName")
+                if name:
+                    self.values["source_name"] = name
+        if self.kind == ".txm":
+            for name, stream in (
+                ("raw_file", "ReconSettings/InputFileName"),
+                ("output_file", "ReconSettings/OutputFileLocation"),
+            ):
+                value = _text(ole, stream)
+                if value:
+                    self.values[name] = value
 
     def iter_frames(self, block=None):
         block = block or self.primary
@@ -207,7 +224,10 @@ class ZeissSource:
 def read_recipe(path):
     path = Path(path).resolve()
     with olefile.OleFileIO(str(path)) as ole:
-        raw = metadata_streams(ole, set())
+        raw = {
+            key: base64.b64encode(value).decode("ascii")
+            for key, value in metadata_streams(ole, set()).items()
+        }
         points = {}
         for parts in ole.listdir():
             if re.fullmatch(r"RecipePoint\d+", parts[0]):
@@ -218,35 +238,3 @@ def read_recipe(path):
             for field in ("AcqFileName", "SrcDriftFileName"):
                 values[field] = _text(ole, f"{point}/AcquisitionSettings/{field}")
     return {"path": str(path), "points": points, "raw_streams_base64": raw}
-
-
-def associate_recipe(source, recipes):
-    """Match declared files or their uniquely identified acquisition directory."""
-    matches = []
-    for recipe in recipes:
-        for name, point in recipe["points"].items():
-            declarations = [
-                PureWindowsPath(point[k])
-                for k in ("AcqFileName", "SrcDriftFileName")
-                if point.get(k)
-            ]
-            exact = any(
-                d.name.casefold() == source.path.name.casefold()
-                and d.parent.name.casefold() == source.path.parent.name.casefold()
-                and d.parent.parent.name.casefold()
-                == source.path.parent.parent.name.casefold()
-                for d in declarations
-            )
-            contextual = source.kind in {".xrm", ".txm"} and any(
-                d.parent.name.casefold() == source.path.parent.name.casefold()
-                and d.parent.parent.name.casefold()
-                == source.path.parent.parent.name.casefold()
-                for d in declarations
-            )
-            if exact or contextual:
-                matches.append((recipe, name, point))
-    if len(matches) > 1:
-        raise AmbiguousMetadataAssociation(
-            f"Multiple recipe points match {source.path}"
-        )
-    return matches[0] if matches else None

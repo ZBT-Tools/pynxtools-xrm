@@ -1,69 +1,9 @@
-# Supply additional metadata
+# Supply TIFF stack metadata
 
-The converter merges image headers, associated recipe metadata, an assigned
-eLabFTW JSON export and explicit supplements. Supplements fill missing values;
-they must not replace values already supplied by the other sources. Preserve
-real measurement values rather than making conversion succeed with placeholders.
+TIFF jobs use explicitly assigned eLabFTW JSON and optional supplements.
+ZEISS binary exports use the [embedded metadata mapping](../metadata-mapping.md).
 
-## Which values are required?
-
-All targets require a sample name, theta and native stage X/Y/Z coordinates.
-The current XRM profile imposes some requirements in addition to NXDL validation.
-See the [mapping reference](../metadata-mapping.md) for distinctions.
-
-| Target | Additional metadata required by this converter |
-|---|---|
-| TXRM / `NXtomo` | Measured angle per projection; integer primary images; generated primary TXRM `image_key=0` |
-| TXM / `NXtomoproc` | Source type/name, reconstruction program/version/date, raw acquisition filename, positive cubic voxel size, verified image orientation; measured slice Y coordinates |
-| XRM / `NXxrm_image` | Positive object-side pixel size; one image |
-| Reconstructed TIFF / `NXtomoproc` | Same reconstruction fields, explicit voxel size, orientation and three-coordinate `volume_origin_um`; no measured TXM slice array available |
-| Projection TIFF / `NXtomo` | Actual per-frame theta and integer role array `image_key` (0..3); integer primary images |
-
-The missing-fields exception reports unresolved values, not proof that no source
-contains the information. The reader currently decodes only selected TXM/RCP
-fields. The mappings can be extended after their meaning is established.
-
-## Option 1: supplement a binary image using archive YAML
-
-Save `scan/reconstruction.archive.yaml` in the same upload as the source. The
-following is a **synthetic illustration**; replace source and reconstruction
-values with verified records. Add only fields absent from the assigned sources.
-
-```yaml
-data:
-  m_def: pynxtools_xrm.nomad.schema_packages.schema.XRMDataConverter
-  input_file: scan/tomo-A/reconstruction.txm
-  metadata_file: scan/measurement.json
-  target_definition: NXtomoproc
-  export: true
-  metadata_supplements:
-    source_type: "Fixed Tube X-ray"
-    source_name: "Synthetic example tube"
-    reconstruction_version: "1.0-example"
-    reconstruction_date: "2026-08-26T12:00:00+02:00"
-    image_orientation:
-      row_axis: z
-      column_axis: x
-      row_sign: 1
-      column_sign: 1
-```
-
-This matches a common five-field failure, assuming `reconstruction_program`,
-sample, geometry, voxel size and raw-file reference already exist. If a program
-name is also missing, add `reconstruction_program` with its true value.
-The quoted `source_type` is an example of a NeXus source category, not an arbitrary
-test string; check the enum in your active NXsource/NXDL definitions.
-
-The `input_file` assignment is essential. Putting supplements in a TIFF-only YAML
-does not configure a TXM. `metadata_file` is relative to the upload root, not to
-the YAML. Once saved/uploaded, reprocess the full upload.
-
-Do not add `theta: 0` or zero stage coordinates when the image already supplies
-them. Different explicit values raise `MetadataConflict`. The same applies to
-units: supplement keys ending `_um` are numbers in micrometres, and theta is in
-degrees. A mismatching supplement does not “win” over the image.
-
-## Option 2: provide an eLabFTW-style JSON export
+## Provide an eLabFTW-style JSON export
 
 The resolver reads exact, case-sensitive labels in
 `metadata_decoded.extra_fields`. This small synthetic JSON shows the five-field
@@ -90,9 +30,8 @@ case, with orientation supplied as explicit configuration:
 }
 ```
 
-For that example, assign the JSON to the binary with `metadata_file`, or put it
-as the sole eLabFTW-style JSON in the nearest measurement folder. It augments
-image/RCP values; it is not a complete metadata record for a bare TIFF stack.
+Assign the JSON to the TIFF job with `metadata_file`. This fragment illustrates
+the format. The full list of required values depends on the selected target.
 
 | JSON label / location | Resolver key | Expected value |
 |---|---|---|
@@ -118,7 +57,7 @@ extra-field labels above or YAML `metadata_supplements` instead. Lab-book free
 text and differently named labels are not automatically interpreted. There is no
 live eLabFTW API lookup; upload the correct export and referenced metadata.
 
-## Option 3: CLI supplements JSON
+## CLI supplements JSON
 
 The CLI `--supplements` file is a plain object of resolver keys, **not** an
 eLabFTW export and not a NOMAD `data:` envelope. For the same synthetic case,
@@ -137,13 +76,13 @@ save `missing-values.json`:
 ```
 
 ```bash
-pynx-xrm convert --input scan/tomo-A/reconstruction.txm --metadata scan/measurement.json --supplements missing-values.json --output reconstruction.nxs
+pynx-xrm convert --tiffs scan/layers --metadata scan/measurement.json --supplements missing-values.json --output reconstruction.nxs
 ```
 
 CLI paths are ordinary paths relative to the shell's current directory (unless
 absolute). They do not use NOMAD's upload-root convention. The CLI does not scan
 for NOMAD archive YAML or automatically discover sidecars: pass `--metadata`
-and repeatable `--recipe` explicitly as needed.
+explicitly as needed.
 
 ## Complete synthetic TIFF example
 
@@ -190,12 +129,7 @@ current model; `row_sign` and `column_sign` must each be integer `1` or `-1`.
 Confirm these from the reconstruction/export convention or calibration. They
 are not arbitrary switches to suppress errors. A TIFF volume also needs
 `volume_origin_um: [x, y, z]`, the first voxel position in the model's sample
-frame. TXM instead uses measured slice positions and centred local X/Z axes.
+frame.
 
-Precedence is **image > associated RCP > eLabFTW > explicit supplements**.
-Conflicting lower-priority source values are recorded; a conflicting explicit
-supplement raises an error. RCP currently contributes sample name and, for
-reconstructions, acquisition reference. TXM `exeVersion` is preserved as
-`file_software_version`, not assumed to be reconstruction software version.
-Layer dates are preserved, not asserted to be reconstruction time. Extending
-those mappings requires verification of the manufacturer fields' semantics.
+An explicit supplement fills an absent TIFF metadata value. A conflicting
+supplement raises an error.

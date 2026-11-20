@@ -1,53 +1,33 @@
-# Metadata mapping and strict validation
+# Metadata mapping and validation
 
-For concrete YAML/JSON examples, units, timestamps and file assignments see
-[additional metadata](howto/additional-metadata.md). This reference describes
-the current implemented mapping, not all fields that a manufacturer file may contain.
+Binary conversion uses OLE streams from exactly one ZEISS image file.
 
-Effective precedence is image > associated RCP > eLabFTW > explicit missing values.
-Conflicting lower-priority values remain in provenance. Explicit configuration
-cannot change an existing value. Invalid high-priority metadata are not replaced.
-RCP settings are preserved as recipe settings; nominal angle limits are never
-used to fabricate measured angle arrays. All RCP streams remain recoverable from
-entry/recipe/data (JSON with raw_streams_base64).
+| Input | Required metadata | Mapping |
+|---|---|---|
+| TXRM | Sample name, measured angle per frame, and frame role | Read the sample from the `Sample:` line of `AcquisitionSettings/StatusString`. Use `ImageInfo/Angles`. A primary bundle explicitly marked `Tomography` supplies projection keys. A frame explicitly marked unavailable gets the invalid key. |
+| TXM | Sample, source, title, original acquisition, reconstruction program/version/date and calibrated axes | Use embedded file references for title and source file. Read the source name from the active source configuration. Use local axes from `PixelSize` and `YPosition`. Report any missing required field before writing. |
+| XRM | One image with a supported pixel type | Write an `NXdata` image linked to its detector dataset. Add local row and column axes when object-side pixel calibration is available. |
 
-| Required content | NXtomo | NXtomoproc | NXxrm_image | ZEISS source |
-|---|---|---|---|---|
-| Sample name | yes | yes | yes | assigned RCP SampleName or ELN/config |
-| Image pixels / dimensions / datatype | yes | yes | yes | ImageInfo and ImageData blocks |
-| Theta and stage X/Y/Z | profile | profile | profile | Angles, X/Y/ZPosition; TXM MeanSampleX/Y/Z |
-| Rotation angle array / image_key | yes | no | no | measured Angles; primary TXRM projections key=0 |
-| Cubic object pixel/voxel size | optional | yes | yes | ImageInfo/PixelSize (um) |
-| Source name / type | optional | yes | optional | explicit proven source; numeric SourceType not decoded |
-| Reconstruction program/version/date | no | yes | no | ELN/config; TXM exeVersion retained separately, no layer-date fallback |
-| Raw acquisition file | no | yes | no | ReconSettings/InputFileName or assigned RCP |
-| Physical image orientation | local axes | yes | local axes | explicit calibrated row/column axes and signs |
-| Volume origin | no | TIFF required | no | explicit TIFF origin; measured TXM Y plus local X/Z offsets |
+The audited TXM files do not identify an explicit reconstruction program and
+process timestamp. The OLE software version and layer timestamps are preserved
+with their original meanings. The numeric source type code remains a vendor
+value pending verification. Output volume attributes describe the unchanged
+stored grey values and do not assert a conversion to a physical quantity.
 
-The NXDL validator is authoritative for the pinned application contract. Profile
-requirements add geometry and provenance checks. Missing fields are reported
-together by MissingRequiredMetadata before output creation where possible.
+Camera name, serial number, exposure, objective, filter and X-ray source
+settings go into the relevant instrument groups when present and applicable.
+The sensor pitch remains distinct from object-side pixel size. Native stage
+readbacks are kept in their recorded coordinates. Local time strings preserve
+the original timezone-free values. Undecoded streams remain recoverable through
+the path, offset and byte datasets documented in the [output reference](reference/outputs.md).
 
-| Optional metadata | Destination / handling |
-|---|---|
-| XrayVoltage, XrayCurrent, ExpTimes | NXsource voltage/current, detector count_time |
-| Acquisition ImageInfo/StoRADistance, DtoRADistance | Signed X transformations in mm; never sample-center distance |
-| TXM ReconInputTomoParams/StoRADistance, DtoRADistance | Positive magnitudes in um, converted to mm and placed on the confirmed global axis: source -X, detector +X. TXM ImageInfo distances are not decoded using the acquisition convention. |
-| CameraName, CameraSerialNumberString | Detector description and serial_number |
-| ObjectiveName, SourceFilterName | instrument/optics/objective and instrument/filter/description; manufacturer bytes retained |
-| ImageInfo/Date | Berlin frame_times in provenance; first projection timestamp as start_time |
-| TXM ImageInfo/Date | Layer timestamps retained; never asserted as reconstruction process time |
-| CamPixelSize | Sensor pitch retained distinctly from object voxel/pixel calibration |
-| IsFlatPanel and unknown vendor fields | Raw stream bytes with original OLE paths |
-| eLabFTW identity/project/sample/users/notes | NXentry, NXsample, NXuser and NXnote |
-| Additional acquisition/reconstruction/storage fields | Native scalar/array datasets in optional domain NXcollections; no serialized eLabFTW JSON |
+## TIFF stack metadata
 
-All full local timestamps use Europe/Berlin, with real UTC conversion for aware
-values. Full timestamp fields reject date-only strings, DST gaps and ambiguous
-local times. The optional acquisition/measurement_date preserves a calendar date
-without inventing a time. Original ZEISS bytes and the RCP recipe remain as
-provenance notes. Conversion time is the
-actual new conversion time and is distinct from acquisition/reconstruction time.
+TIFF stacks use the separate TIFF adapter. Supply an eLabFTW JSON and explicit
+supplements for missing values. Reconstruction TIFFs require verified
+orientation, volume origin, voxel calibration and reconstruction metadata.
+Projection TIFFs require measured angles and an explicit frame role array.
+See [additional metadata](howto/additional-metadata.md) for examples.
 
 The eLabFTW field registry is maintained in elabftw.py. Standard NXsample,
 NXsource, NXdetector, NXfilter, NXuser, NXentry and NXprocess fields are used where
@@ -61,18 +41,3 @@ target_path, status, reason). Empty fields are reported separately. Unknown
 populated extra fields retain their native value/unit under unmapped_metadata.
 The original eLabFTW JSON is not embedded, including in the provenance group.
 Lower-priority conflicting values and selected field origins are native datasets.
-
-The single-image profile is a local application named NXxrm_image using generic
-NXimage and NXdata; it does not mislabel X-ray microscopy as electron microscopy
-through NXem. Its NXDL is packaged and added to an explicit definitions overlay.
-
-## Source-reader limitations
-
-RCP decoding currently contributes SampleName and the acquisition reference
-(AcqFileName for NXtomoproc); other recipe streams are preserved but not
-automatically mapped into missing reconstruction/source fields. The eLabFTW
-resolver requires exact labels such as Source name, Source type, Reconstruction
-software, Software version and Reconstruction date under
-`metadata_decoded.extra_fields`. It does not query a live laboratory notebook.
-Orientation is read from explicit configuration. These implementation limits
-are distinct from fields being absent in the original data.

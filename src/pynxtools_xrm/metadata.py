@@ -190,30 +190,12 @@ def read_elabftw_metadata(path):
 def resolve_metadata(
     source,
     *,
-    recipe_match=None,
     metadata_file=None,
     supplements=None,
     target="NXtomoproc",
 ):
     meta = ResolvedMetadata()
-    image_values = dict(source.values)
-    if source.kind in {".txrm", ".xrm"} and "pixel_size_um" in image_values:
-        image_values["object_pixel_size_um"] = image_values["pixel_size_um"]
-    if source.kind == ".txrm":
-        image_values["number_of_projections"] = source.frame_count
-    meta.add(image_values, str(source.path))
-    if recipe_match:
-        recipe, point_name, point = recipe_match
-        meta.sources["recipe"] = recipe
-        meta.add(
-            {"sample_name": point.get("SampleName")},
-            f"{recipe['path']}:{point_name}/SampleName",
-        )
-        if target == "NXtomoproc":
-            meta.add(
-                {"raw_file": point.get("AcqFileName")},
-                f"{recipe['path']}:{point_name}/AcquisitionSettings/AcqFileName",
-            )
+    meta.add(source.values, str(source.path))
     if metadata_file:
         values, raw = read_elabftw_metadata(metadata_file)
         if target != "NXtomoproc" and "pixel_size_um" in values:

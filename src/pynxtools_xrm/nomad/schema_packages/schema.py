@@ -15,16 +15,23 @@ _safe_raw_path = safe_raw_path
 
 class XRMDataConverter(EntryData):
     input_file = Quantity(type=str, a_eln=dict(component="FileEditQuantity"))
-    metadata_file = Quantity(type=str, a_eln=dict(component="FileEditQuantity"))
-    recipe_file = Quantity(type=str, a_eln=dict(component="FileEditQuantity"))
+    metadata_file = Quantity(
+        type=str,
+        description="eLabFTW JSON for TIFF jobs.",
+        a_eln=dict(component="FileEditQuantity"),
+    )
+    recipe_file = Quantity(
+        type=str, description="Legacy field retained for existing archive YAMLs."
+    )
     tiff_directory = Quantity(type=str, a_eln=dict(component="StringEditQuantity"))
     target_definition = Quantity(
         type=MEnum("NXtomo", "NXtomoproc", "NXxrm_image"),
+        description="TIFF target. The binary format determines its own target.",
         a_eln=dict(component="EnumEditQuantity"),
     )
     metadata_supplements = Quantity(
         type=JSON,
-        description="Explicit missing values only; never overrides image/RCP/ELN values.",
+        description="Explicit missing TIFF metadata. Existing values take precedence.",
     )
     output = Quantity(
         type=str,

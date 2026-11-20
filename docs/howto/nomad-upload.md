@@ -1,61 +1,30 @@
 # Structure and process a NOMAD upload
 
 Automatic processing needs a configured server, supported image files, complete
-metadata and unambiguous associations. Directory layout alone cannot guarantee
+embedded metadata for the selected output. Directory layout alone cannot guarantee
 that arbitrary manufacturer files satisfy the supported profile. First complete
 [Oasis deployment](oasis-deployment.md).
 
 ## Binary image upload
 
-Upload the entire tree together, or a ZIP preserving the following structure.
-Here `/` is the **upload raw-file root**, not the server filesystem root:
+Upload the ZEISS files individually or in their original directory tree.
+The binary parser processes each supported file using its embedded metadata.
+The file extension selects the output structure. Missing application fields
+are listed in the conversion status before a new NeXus output is written.
 
-```text
-/
-└── scan/
-    ├── measurement.json
-    ├── recipe.rcp
-    ├── reconstruction.archive.yaml
-    └── tomo-A/
-        ├── acquisition.txrm
-        ├── reconstruction.txm
-        └── FrontScoutImage.xrm
-```
-
-The names are illustrative. Keep original vendor basenames and acquisition
-directory names when possible: RCP association uses declared filenames and
-directory context. Recipe and eLabFTW JSON should describe these measurements.
-Each ZEISS image with supported headers is automatically matched by the binary
-parser. Without custom options, no YAML is required if the associated sources
-already provide every required value. A single-image XRM must contain one frame.
-
-An example `scan/reconstruction.archive.yaml` is:
+A matching YAML can choose an output path or compression:
 
 ```yaml
 data:
   m_def: pynxtools_xrm.nomad.schema_packages.schema.XRMDataConverter
-  input_file: scan/tomo-A/reconstruction.txm
-  metadata_file: scan/measurement.json
-  recipe_file: scan/recipe.rcp
-  target_definition: NXtomoproc
-  export: true
-  metadata_supplements:
-    image_orientation:
-      row_axis: z
-      column_axis: x
-      row_sign: 1
-      column_sign: 1
+  input_file: scan/tomo-A/acquisition.txrm
+  output: results/acquisition.nxs
+  gzip_level: 4
 ```
-
-This example assumes all other required metadata are available in the assigned
-sources and that the orientation has been verified. Use the
-[full metadata examples](additional-metadata.md) when fields are missing.
-`recipe_file` is optional; if set it must still match the image. An explicit
-assignment does not bypass the association check.
 
 ## Path and configuration rules
 
-1. Every `input_file`, `metadata_file`, `recipe_file`, `tiff_directory` and `output`
+1. Every `input_file`, `metadata_file`, `tiff_directory` and `output`
    path is relative to the upload root. A nested YAML does not change the base.
 2. Use `/` separators and exact filename case for Linux. Server-absolute and
    external paths are not accepted for input; paths must resolve inside the upload.
@@ -69,21 +38,6 @@ assignment does not bypass the association check.
    configures a TIFF job and supplies no metadata to a TXM parser. Do not set both.
 6. Choose distinct output paths for different jobs. Retain the default for
    binary images unless an explicit naming convention is needed.
-
-## Automatic sidecar discovery
-
-For each binary source, the parser searches its directory, then ancestors up to
-the upload root. At the nearest level containing an eLabFTW-style JSON (a JSON
-object containing `metadata_decoded`), it uses that file. Two matching JSONs at
-that level are ambiguous: set `metadata_file` explicitly. An unrelated plain
-JSON supplement file is not automatically interpreted as eLabFTW metadata.
-
-RCP discovery similarly selects the nearest directory containing `.rcp` files.
-The reader then requires an unambiguous association through RecipePoint file
-declarations or acquisition-directory context. An unrelated RCP in that scope
-can stop conversion; keep acquisitions in separate directories or explicitly
-assign the correct recipe. The reader does not merge all recipes or all JSON
-files in the upload.
 
 ## TIFF stack upload
 
@@ -117,22 +71,18 @@ not be zero. A reconstructed stack additionally needs voxel calibration, volume
 origin and verified orientation. Projection TIFFs use `NXtomo`, real measured
 angles and one `image_key` per frame. See [metadata](additional-metadata.md).
 
-For TIFF jobs, assign `metadata_file` explicitly. The YAML TIFF path does not
-perform the binary parser's automatic JSON/RCP discovery; `recipe_file` is not
-passed through that TIFF conversion path.
+For TIFF jobs, assign `metadata_file` explicitly.
 
 ## Processing and verification
 
-1. Submit images, JSON/RCP and YAML together. Avoid triggering a large conversion
-   while associated files are still being uploaded.
+1. Submit the image files. For TIFF stacks include the YAML job and its metadata.
 2. Inspect the Entries tab. A completed project/upload can still contain failed
    entries. Open each failure's Logs and expand its exception.
 3. Expect a successful binary conversion entry and a generated `.nxs` entry
    processed by the configured NeXus parser. An RCP need not have its own entry.
 4. Inspect [output paths and datasets](../reference/outputs.md), not just the
    existence of an older `.nxs` file. Failed replacement preserves an older result.
-5. After adding/changing JSON, RCP or YAML, **reprocess the entire upload**.
-   There is no custom sidecar watcher that automatically reruns dependent images.
+5. Reprocess the relevant job after changes to its source or configuration.
 
 For a small first check use NOMAD's installed XRM example upload. Its values are
 synthetic. Passing that example verifies the pipeline, not a real measurement's

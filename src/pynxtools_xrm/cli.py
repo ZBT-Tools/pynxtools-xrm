@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from pynxtools_xrm.definitions import prepare_definitions
+from pynxtools_xrm.errors import MissingRequiredMetadata
 from pynxtools_xrm.models import CompressionConfig
 from pynxtools_xrm.streaming_writer import convert
 from pynxtools_xrm.tiff_stack import TiffSource, discover_tiff_stack
@@ -23,11 +24,10 @@ def main(argv=None):
     inputs.add_argument("--input", type=Path)
     inputs.add_argument("--tiffs", type=Path)
     command.add_argument("--metadata", type=Path)
-    command.add_argument("--recipe", action="append", type=Path, default=[])
     command.add_argument(
         "--supplements", type=Path, help="JSON object: explicit missing values only"
     )
-    command.add_argument("--target", choices=["NXtomo", "NXtomoproc", "NXxrm_image"])
+    command.add_argument("--target", choices=["NXtomo", "NXtomoproc"])
     command.add_argument("--output", required=True, type=Path)
     command.add_argument("--gzip-level", type=int, default=4)
     command.add_argument("--chunk-mib", type=float, default=1.0)
@@ -57,21 +57,25 @@ def main(argv=None):
             )
         )
         return 0
-    report = convert(
-        args.input or args.tiffs,
-        args.output,
-        target_definition=args.target,
-        metadata_file=args.metadata,
-        recipe_paths=args.recipe,
-        supplements=json.loads(args.supplements.read_text())
-        if args.supplements
-        else None,
-        compression=CompressionConfig(
-            level=args.gzip_level,
-            target_chunk_bytes=max(1, round(args.chunk_mib * 1024**2)),
-        ),
-        overwrite=args.overwrite,
-    )
+    if args.input and (args.metadata or args.supplements):
+        command.error("--metadata and --supplements apply only to TIFF stacks")
+    try:
+        report = convert(
+            args.input or args.tiffs,
+            args.output,
+            target_definition=args.target,
+            metadata_file=args.metadata,
+            supplements=json.loads(args.supplements.read_text(encoding="utf-8"))
+            if args.supplements
+            else None,
+            compression=CompressionConfig(
+                level=args.gzip_level,
+                target_chunk_bytes=max(1, round(args.chunk_mib * 1024**2)),
+            ),
+            overwrite=args.overwrite,
+        )
+    except MissingRequiredMetadata as exc:
+        parser.exit(1, f"{exc}\n")
     print(
         json.dumps(
             {**report.__dict__, "output_path": str(report.output_path)}, indent=2

@@ -1,6 +1,5 @@
-"""Small target mappings; metadata uses pynxtools' standard template paths."""
+"""Legacy TIFF stack mapping for the pynxtools metadata Writer."""
 
-import json
 from datetime import datetime
 from importlib.metadata import version
 
@@ -12,9 +11,7 @@ from pynxtools_xrm.elabftw import (
     nexus_value,
     write_structured,
 )
-from pynxtools_xrm.errors import MissingRequiredMetadata
 from pynxtools_xrm.geometry import BERLIN, GLOBAL_IN_NEXUS, global_stage_position
-from pynxtools_xrm.metadata import json_value
 
 E = "/ENTRY[entry]"
 INSTRUMENT = E + "/INSTRUMENT[instrument]"
@@ -37,16 +34,6 @@ def frame_array(value, count, field):
     if a.shape != (count,) or not np.all(np.isfinite(a)):
         raise ValueError(f"Invalid {field}: expected {count} finite values")
     return a
-
-
-def add_note(t, name, payload):
-    prefix = E + f"/NOTE[{name}]"
-    t[prefix + "/type"] = "application/json"
-    t[prefix + "/data"] = np.bytes_(
-        json.dumps(
-            payload, ensure_ascii=True, default=json_value, allow_nan=False
-        ).encode("utf-8")
-    )
 
 
 def _transform(t, prefix, name, value, kind, vector, depends, unit):  # noqa: PLR0917
@@ -156,27 +143,15 @@ def volume_axes(source, meta):
     h, w = source.image_shape
     shape = (w, source.frame_count, h)
     spacing = v["pixel_size_um"]
-    if source.kind == ".txm":
-        y = np.asarray(v.get("slice_y_um"), dtype=float)
-        if y.shape != (source.frame_count,) or not np.all(np.isfinite(y)):
-            raise MissingRequiredMetadata("NXtomoproc", ["slice_y_um"])
-        if len(y) > 1 and not np.allclose(
-            np.abs(np.diff(y)), spacing, atol=max(spacing * 1e-5, 0.002), rtol=0
-        ):
-            raise ValueError("Slice spacing conflicts with cubic voxel calibration")
-        x = (np.arange(w) - (w - 1) / 2) * spacing * orientation["column_sign"]
-        z = (np.arange(h) - (h - 1) / 2) * spacing * orientation["row_sign"]
-        y = y - float(v["stage_y_um"])
-    else:
-        meta.require("NXtomoproc", ["volume_origin_um"])
-        origin = np.asarray(v["volume_origin_um"], dtype=float)
-        if origin.shape != (3,) or not np.all(np.isfinite(origin)):
-            raise ValueError(
-                "volume_origin_um must give three finite first-voxel coordinates"
-            )
-        x = origin[0] + np.arange(w) * spacing * orientation["column_sign"]
-        y = origin[1] + np.arange(source.frame_count) * spacing
-        z = origin[2] + np.arange(h) * spacing * orientation["row_sign"]
+    meta.require("NXtomoproc", ["volume_origin_um"])
+    origin = np.asarray(v["volume_origin_um"], dtype=float)
+    if origin.shape != (3,) or not np.all(np.isfinite(origin)):
+        raise ValueError(
+            "volume_origin_um must give three finite first-voxel coordinates"
+        )
+    x = origin[0] + np.arange(w) * spacing * orientation["column_sign"]
+    y = origin[1] + np.arange(source.frame_count) * spacing
+    z = origin[2] + np.arange(h) * spacing * orientation["row_sign"]
     return shape, (x, y, z)
 
 
@@ -194,8 +169,6 @@ def build_template(source, meta, target):
             "pixel_size_um",
             "image_orientation",
         ]
-    elif target == "NXxrm_image":
-        required += ["pixel_size_um"]
     elif target == "NXtomo":
         if not np.issubdtype(source.dtype, np.integer):
             raise ValueError(
@@ -243,10 +216,6 @@ def build_template(source, meta, target):
     for k in ("start_time", "end_time"):
         if k in v and target != "NXtomoproc":
             t[E + "/" + k] = v[k]
-    if "frame_times" in v and target != "NXtomoproc":
-        times = v["frame_times"]
-        t[E + "/start_time"] = times[0]
-        # The last recorded frame timestamp is not necessarily exposure completion.
     for user_key, group in (
         ("author", "user"),
         ("experimenter", "experimenter"),
@@ -282,19 +251,14 @@ def build_template(source, meta, target):
         t[S + "/rotation_angle"] = frame_array(v["theta"], n, "theta")
         t[S + "/rotation_angle/@units"] = "deg"
         t[S + "/rotation_angle/@target"] = "/entry/sample/rotation_angle"
-        if source.kind == ".tiff":
-            meta.require(target, ["image_key"])
-            keys = np.asarray(v["image_key"])
-            if (
-                keys.shape != (n,)
-                or not np.issubdtype(keys.dtype, np.integer)
-                or not np.all(np.isin(keys, [0, 1, 2, 3]))
-            ):
-                raise ValueError(
-                    "image_key must give one integer role (0..3) per frame"
-                )
-        else:
-            keys = np.zeros(n, dtype=np.int32)
+        meta.require(target, ["image_key"])
+        keys = np.asarray(v["image_key"])
+        if (
+            keys.shape != (n,)
+            or not np.issubdtype(keys.dtype, np.integer)
+            or not np.all(np.isin(keys, [0, 1, 2, 3]))
+        ):
+            raise ValueError("image_key must give one integer role (0..3) per frame")
         t[D + "/image_key"] = keys
         t[D + "/image_key/@target"] = "/entry/instrument/detector/image_key"
         for name, link in (
@@ -316,25 +280,10 @@ def build_template(source, meta, target):
             t[E + "/reconstruction/" + key] = v["reconstruction_" + key]
         t[E + "/reconstruction/parameters/raw_file"] = str(v["raw_file"])
         dataset = "/entry/data/data"
-    else:
-        h, w = source.image_shape
-        shape, dataset = (h, w), "/entry/instrument/detector/data"
-        p = E + "/image/image_2d"
-        t[p + "/intensity"] = {"link": dataset}
-        t[p + "/@signal"] = "intensity"
-        t[p + "/@axes"] = np.asarray(["axis_j", "axis_i"], dtype="S")
-        for name, length in (("axis_j", h), ("axis_i", w)):
-            t[p + "/" + name] = np.arange(length, dtype=float) * v["pixel_size_um"]
-            t[p + "/" + name + "/@units"] = "um"
-        t[p + "/@interpretation"] = "image"
     p = E + "/PROCESS[conversion]"
     t[p + "/program"] = "pynxtools-xrm"
     t[p + "/version"] = version("pynxtools-xrm")
     t[p + "/date"] = datetime.now(BERLIN).isoformat()
-    # Generic NXparameters/PARAMETER is numeric in the pinned schema. Only
-    # the local single-image application declares this string explicitly.
-    if target == "NXxrm_image":
-        t[p + "/PARAMETERS[parameters]/source_file"] = str(source.path)
     map_effective_fields(t, v, target)
     write_structured(
         t,
@@ -347,13 +296,4 @@ def build_template(source, meta, target):
         },
     )
     map_elabftw(t, meta, target)
-    if source.raw_metadata:
-        add_note(
-            t,
-            "zeiss_metadata",
-            {"path": str(source.path), "streams_base64": source.raw_metadata},
-        )
-    for name, payload in meta.sources.items():
-        if name != "elabftw":
-            add_note(t, name, payload)
     return t, shape, dataset
